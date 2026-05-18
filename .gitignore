@@ -1,3 +1,15 @@
+# Datasets
+cifar10/dataset/
+cifar100/dataset/
+mnist/dataset/
+ship_performance/dataset/
+
+# Checkpoints
+cifar10/checkpoints/
+cifar100/checkpoints/
+mnist/checkpoints/
+ship_performance/checkpoints/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
