@@ -1,0 +1,39 @@
+import torch
+import torch.nn as nn
+
+class LambdaModule(nn.Module):
+    def __init__(self, func):
+        super().__init__()
+        self.func = func
+        
+    def extra_repr(self):
+        return f'func={self.func}'
+        
+    def forward(self, *args, **kwargs):
+        return self.func(*args, **kwargs)
+    
+class RSWAFF(nn.Module):
+    def __init__(self):
+        super(RSWAFF, self).__init__()
+        self.tanh = torch.nn.Tanh()
+        
+    def forward(self, x):
+        return torch.ones_like(x) - self.tanh(x) ** 2
+
+class PReLUGlobalParam(nn.Module):
+    """PReLU with a single learnable parameter for all channels"""
+    def __init__(self, init=0.25):
+        super(PReLUGlobalParam, self).__init__()
+        self.prelu = nn.PReLU(num_parameters=1, init=init)
+        
+    def forward(self, x):
+        return self.prelu(x)
+
+def tanh2(x):
+    return torch.nn.functional.tanh(x) ** 2
+
+def gaussian(x):
+    return torch.exp(-(x ** 2))
+
+def sinc(x, guard=1e-8):
+    return torch.sin(x + guard) / (x + guard)
