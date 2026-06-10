@@ -64,19 +64,18 @@ def build_dataset(force: bool = False) -> None:
     except ImportError:
         raise ImportError("torchvision is required. Install with: pip install torchvision")
     if DATASET_NAME == 'mnist':
-        train_ds = datasets.MNIST(root=str(_DATA_PATH.parent), train=True, download=True)
-        test_ds = datasets.MNIST(root=str(_DATA_PATH.parent), train=False, download=True)
+        # Use _DATA_PATH as root so raw files go into dataset/MNIST/raw
+        train_ds = datasets.MNIST(root=str(_DATA_PATH), train=True, download=True)
+        test_ds = datasets.MNIST(root=str(_DATA_PATH), train=False, download=True)
     else:
         raise ValueError(f"Unsupported dataset: {DATASET_NAME}")
-    class_names = get_class_names()  # or train_ds.classes doesn't exist for MNIST, use our function
-    # For MNIST, data is (N,28,28) as numpy array, labels is list of ints
-    train_data = train_ds.data.numpy()  # shape (60000,28,28)
+    class_names = get_class_names()
+    train_data = train_ds.data.numpy()
     train_labels = np.array(train_ds.targets)
-    test_data = test_ds.data.numpy()    # shape (10000,28,28)
+    test_data = test_ds.data.numpy()
     test_labels = np.array(test_ds.targets)
-    # Add channel dimension to match (H,W,1) for consistency with other datasets
-    train_data = train_data[..., np.newaxis]  # (N,28,28,1)
-    test_data = test_data[..., np.newaxis]    # (N,28,28,1)
+    train_data = train_data[..., np.newaxis]
+    test_data = test_data[..., np.newaxis]
     with open(_TRAIN_PKL, "wb") as f:
         pickle.dump({"data": train_data, "labels": train_labels, "classes": class_names}, f)
     with open(_TEST_PKL, "wb") as f:
