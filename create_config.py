@@ -74,14 +74,16 @@ if __name__ == '__main__':
     num_classes = dataset_info['num_classes']
     is_multiclass = dataset_info['task'] == 'multiclass'
     
-    # Calculate input features based on image size
+    # Determine number of channels from dataset_info
+    channels = dataset_info['input_shape'][2] if len(dataset_info['input_shape']) == 3 else 3
+    
     if args.resize is not None:
         h, w = args.resize
-        num_features = h * w * 3
+        num_features = h * w * channels
     else:
         h, w = dataset_info['input_shape'][:2]
-        num_features = h * w * 3
-    
+        num_features = h * w * channels
+
     features = [f'pixel_{i}' for i in range(num_features)]
     labels = get_class_names()
     
