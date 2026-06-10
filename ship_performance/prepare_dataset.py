@@ -122,7 +122,8 @@ def build_dataset(force: bool = False) -> None:
         X = X[FEATURE_COLUMNS]
 
     # ---- Encode categorical features ----
-    categorical_cols = X.select_dtypes(include=["object", "category"]).columns.tolist()
+    # Include 'string' type to avoid deprecation warning
+    categorical_cols = X.select_dtypes(include=["object", "category", "string"]).columns.tolist()
     numerical_cols = X.select_dtypes(include=np.number).columns.tolist()
 
     from sklearn.preprocessing import LabelEncoder
@@ -130,7 +131,10 @@ def build_dataset(force: bool = False) -> None:
     for col in categorical_cols:
         le = LabelEncoder()
         X[col] = le.fit_transform(X[col].astype(str))
-        label_encoders[col] = dict(zip(le.classes_, le.transform(le.classes_)))
+        # Convert numpy int64 to Python int for JSON serialization
+        label_encoders[col] = {
+            k: int(v) for k, v in zip(le.classes_, le.transform(le.classes_))
+        }
 
     # ---- Handle target (encode classification, keep as float for regression) ----
     from sklearn.preprocessing import LabelEncoder as TargetEncoder
@@ -139,7 +143,9 @@ def build_dataset(force: bool = False) -> None:
         y_encoded = le_target.fit_transform(y.astype(str))
         target_encoder = {
             "classes": le_target.classes_.tolist(),
-            "mapping": dict(zip(le_target.classes_, le_target.transform(le_target.classes_)))
+            "mapping": {
+                k: int(v) for k, v in zip(le_target.classes_, le_target.transform(le_target.classes_))
+            }
         }
     else:  # regression
         y_encoded = y.values.astype(np.float32)
@@ -356,8 +362,10 @@ if __name__ == "__main__":
     build_dataset(force=args.force)
 
     labels = create_labels()
-    if labels:
-        print(f"\nLabels created with {len(labels)} classes" if TASK_TYPE == "classification" else "\nNo labels (regression task)")
+    if labels and TASK_TYPE == "classification":
+        print(f"\nLabels created with {len(labels)} classes")
+    elif TASK_TYPE == "regression":
+        print("\nNo labels (regression task)")
 
     mean, std = calculate_statistics()
     print(f"Statistics computed (mean shape: {mean.shape}, std shape: {std.shape})")
