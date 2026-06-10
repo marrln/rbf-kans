@@ -29,11 +29,14 @@ class PReLUGlobalParam(nn.Module):
     def forward(self, x):
         return self.prelu(x)
 
-def tanh2(x):
-    return torch.nn.functional.tanh(x) ** 2
+class Gaussian(torch.nn.Module):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return torch.exp(-x**2)
 
-def gaussian(x):
-    return torch.exp(-(x ** 2))
+class Tanh2(torch.nn.Module):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return torch.tanh(x)**2
 
-def sinc(x, guard=1e-8):
-    return torch.sin(x + guard) / (x + guard)
+class Sinc(torch.nn.Module):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return torch.sinc(x)   # note: torch.sinc is πx version; adjust if needed

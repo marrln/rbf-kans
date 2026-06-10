@@ -7,7 +7,7 @@ function to resolve a given mode name or callable into a standardized format for
 from typing import Callable, Literal
 import torch
 
-from .mode import RSWAFF, PReLUGlobalParam, tanh2, gaussian, sinc
+from .mode import RSWAFF, PReLUGlobalParam, Tanh2, Gaussian, Sinc
 
 USE_BIAS_ON_LINEAR = False  # Required for FPGA compatibility
 
@@ -22,9 +22,9 @@ RBF_MODE = Literal[
 _CUSTOM_MODES = {
     "RSWAFF": RSWAFF,
     "PRELU": PReLUGlobalParam,
-    "TANH2": tanh2,
-    "GAUSSIAN": gaussian,
-    "SAMPLE": sinc,
+    "TANH2": Tanh2,
+    "GAUSSIAN": Gaussian,
+    "SAMPLE": Sinc,
 }
 
 RBF_MODES = tuple(_CUSTOM_MODES)
@@ -58,8 +58,8 @@ def get_rbf_mode(mode: str | Callable):
     mode_name = mode.upper()
     custom_mode = _CUSTOM_MODES.get(mode_name)
     if custom_mode is not None:
-        return custom_mode(), mode_name
-
+        return custom_mode(), mode_name 
+    
     if hasattr(torch.nn, mode):
         return getattr(torch.nn, mode)(), mode
 
