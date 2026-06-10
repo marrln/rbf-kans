@@ -176,14 +176,14 @@ if __name__ == '__main__':
     train_loader = DataLoader(
         train_loader,
         batch_size=train_config['batch_size'],
-        # num_workers=os.cpu_count(),
-        # persistent_workers=True,
+        num_workers=os.cpu_count(),
+        persistent_workers=True,
         pin_memory=device == torch.device('cuda'),
     )
     val_loader = DataLoader(
         val_loader,
         batch_size=train_config['batch_size'],
-        # num_workers=os.cpu_count(),
+        num_workers=os.cpu_count(),
         pin_memory=device == torch.device('cuda'),
     )
     
