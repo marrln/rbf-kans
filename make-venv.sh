@@ -5,8 +5,4 @@ if [ ! -d venv ]; then
 fi
 
 source venv/bin/activate
-
-pip install -U numpy pandas pillow torch torchinfo torchvision \
-        tqdm matplotlib seaborn albumentationsx kaggle kagglehub \
-        scikit-learn torchmetrics nibabel Nuitka ninja\
-        --upgrade
+pip install -U numpy pandas torch torchvision tqdm matplotlib torchmetrics seaborn torchinfo scikit-learn albumentations kaggle kagglehub
