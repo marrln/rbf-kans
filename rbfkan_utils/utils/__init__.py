@@ -1,6 +1,8 @@
-from typing import Mapping
+from typing import Mapping, Optional
 import torch
 from torch.nn import Module
+from torch.optim import Optimizer
+from torch.optim.lr_scheduler import LRScheduler
 import os, json
 import numpy as np
 from .callbacks import *
@@ -130,3 +132,67 @@ def cat(x : list[list[torch.Tensor],dict[str,torch.Tensor]], dim: int = 0,):
         ])
     else :
         raise NotImplementedError(f'Function "cat" does not support type {type(x)}')
+
+
+def save_checkpoint(
+    model: Module,
+    optimizer: Optimizer,
+    scheduler: LRScheduler,
+    epoch: int,
+    best_loss: float,
+    history: dict,
+    filepath: str,
+    rng_state: Optional[torch.Tensor] = None
+) -> None:
+    """
+    Save a full training checkpoint containing model, optimizer, scheduler,
+    epoch, best loss, history, and optional RNG state.
+    """
+    checkpoint = {
+        'epoch': epoch,
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'scheduler_state_dict': scheduler.state_dict(),
+        'best_loss': best_loss,
+        'history': history,
+    }
+    if rng_state is not None:
+        checkpoint['rng_state'] = rng_state
+    torch.save(checkpoint, filepath)
+
+
+def load_checkpoint(
+    filepath: str,
+    model: Optional[Module] = None,
+    optimizer: Optional[Optimizer] = None,
+    scheduler: Optional[LRScheduler] = None,
+    load_rng: bool = False,
+    device: torch.device = torch.device('cpu')
+) -> dict:
+    """
+    Load a full training checkpoint.
+
+    Args:
+        filepath: Path to checkpoint file.
+        model: Model to load state_dict into (optional).
+        optimizer: Optimizer to load state_dict into (optional).
+        scheduler: Scheduler to load state_dict into (optional).
+        load_rng: If True and checkpoint contains 'rng_state', restore torch RNG state.
+        device: Device to map tensors to.
+
+    Returns:
+        The checkpoint dictionary (contains keys: epoch, model_state_dict,
+        optimizer_state_dict, scheduler_state_dict, best_loss, history, maybe rng_state).
+    """
+    checkpoint = torch.load(filepath, map_location=device)
+
+    if model is not None:
+        model.load_state_dict(checkpoint['model_state_dict'])
+    if optimizer is not None:
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    if scheduler is not None:
+        scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+    if load_rng and 'rng_state' in checkpoint:
+        torch.random.set_rng_state(checkpoint['rng_state'])
+
+    return checkpoint
