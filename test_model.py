@@ -33,31 +33,31 @@ if __name__ == '__main__':
     
     from custom_dataset import GenericDataset
     
-    args.test_version = '_'.join(['test',args.test_version])
+    args.test_version = '_'.join(['test', args.test_version])
 
     # Check argument validity
-    if  os.path.isdir(args.test_dir) or not os.path.exists(args.test_dir):
+    if os.path.isdir(args.test_dir) or not os.path.exists(args.test_dir):
         os.makedirs(args.test_dir, exist_ok=True)
-    else :
+    else:
         raise ValueError(f'Destination folder is not a directory; got "{os.path.splitext(args.test_dir)[-1]}"')
     
     args.test_dir = os.path.join(args.test_dir, args.hash, args.test_version)
 
-    if args.hash is None :
-            raise ValueError(f'Cannot locate training configuration file.')
-    else :
+    if args.hash is None:
+        raise ValueError(f'Cannot locate training configuration file.')
+    else:
         path = os.path.join(args.test_dir, 'config', 'train.json')
         if os.path.exists(path):
             args.train_config = path
             print(f'-- Using training configuration path "{path}"')
-        else :
+        else:
             raise ValueError(f'Cannot locate training configuration file.')
             
         path = os.path.join(args.test_dir, 'config', 'model.json')
         if os.path.exists(path):
             args.model_config = path
             print(f'-- Using model configuration path "{path}"')
-        else :
+        else:
             raise ValueError(f'Cannot locate model configuration file.')
             
     import pandas as pd
@@ -75,8 +75,8 @@ if __name__ == '__main__':
     model_config = load_config(args.model_config, locals=get_locals())
     set_seed(train_config['seed'])
 
-    # Instantiate models
-    model = instantiate(model_config,'model')
+    # Instantiate model
+    model = instantiate(model_config, 'model')
 
     # Load model state dict
     fname = os.path.join(args.test_dir, 'models', args.epoch)
@@ -98,10 +98,10 @@ if __name__ == '__main__':
     if len(eval_criteria):
         for key, val in eval_criteria.items():
             print('  --', key, ':', val)
-    else :
+    else:
         print('  No evaluation criteria.')
 
-    # Get dataset with correct name
+    # Get test dataset
     data, labels = get_dataset('test')
     
     preprocess_data = A.Compose([
@@ -113,8 +113,7 @@ if __name__ == '__main__':
         seed        = train_config['seed'],
     )
     
-    # Use CurrentDataset instead of hardcoded CIFAR100Dataset
-    test_loader = GenericDataset(
+    test_dataset = GenericDataset(
         data, labels,
         task                    = train_config['task'],
         return_key              = True,
@@ -125,7 +124,7 @@ if __name__ == '__main__':
         flatten                 = model_config['flatten'],
     )
     test_loader = DataLoader(
-        test_loader, 
+        dataset         = test_dataset, 
         batch_size      = train_config['batch_size'],
         num_workers     = os.cpu_count(),
         pin_memory      = device == torch.device('cuda'),
@@ -163,8 +162,8 @@ if __name__ == '__main__':
     rslt_path = os.path.join(args.test_dir,'rslt')
     test_df = pd.read_csv(os.path.join(rslt_path,f'{args.epoch}.csv'), index_col='Index')
 
-    gt_df = test_df[[_ for _ in test_df.columns if 'targ' in _]]
-    pr_df = test_df[[_ for _ in test_df.columns if 'pred' in _]]
+    gt_df = test_df[[col for col in test_df.columns if 'targ' in col]]
+    pr_df = test_df[[col for col in test_df.columns if 'pred' in col]]
 
     if len(gt_df.columns) == 1: # OR train_config['task'] == 'multiclass'
         gt_df.columns = ['Label']
