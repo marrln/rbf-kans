@@ -29,7 +29,7 @@ if __name__ == '__main__':
     if args.test_dir is None:
         args.test_dir = os.path.join(DATASET_DIR, 'train')
         
-    args.test_version = '_'.join(['test',args.test_version])
+    args.test_version = '_'.join(['test', args.test_version])
 
     # Use dataset-specific test directory
     if args.dataset != DATASET_NAME:
@@ -68,34 +68,70 @@ if __name__ == '__main__':
     from sklearn.metrics import confusion_matrix
     import matplotlib.pyplot as plt
     
-    from rbfkan_utils.utils import load_dict
+    from rbfkan_utils.utils import load_checkpoint
     from rbfkan_utils.utils.plotter import plot_confusion_matrix
-
     from rbfkan_utils.config import *
 
     # Check configuration file validity
     train_config = load_config(args.train_config, locals=get_locals())
     model_config = load_config(args.model_config, locals=get_locals())
 
-    # Read training history
-    history = load_dict(os.path.join(args.test_dir, 'history'))
-    test = history['test'][args.epoch]
+    # Determine which checkpoint to load for history
+    model_dir = os.path.join(args.test_dir, 'models')
+    if args.epoch == 'best':
+        checkpoint_path = os.path.join(model_dir, 'best.pt')
+    else:
+        checkpoint_path = os.path.join(model_dir, 'last.pt')
+    
+    if not os.path.exists(checkpoint_path):
+        raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
+    
+    print(f"Loading history from {checkpoint_path}")
+    checkpoint = load_checkpoint(checkpoint_path, load_rng=False)
+    history = checkpoint['history']   # contains 'train' and 'val' keys
+
+    # The script expects history['test'][args.epoch]. 
+    # If 'test' key is missing, fall back to validation metrics (with a warning)
+    if 'test' not in history:
+        print("Warning: No 'test' key found in history. Using validation metrics instead.")
+        if args.epoch == 'best':
+            # Find best validation loss epoch
+            best_val_loss = float('inf')
+            best_epoch = None
+            for ep, metrics in history['val'].items():
+                if metrics['loss'] < best_val_loss:
+                    best_val_loss = metrics['loss']
+                    best_epoch = ep
+            test_metrics = history['val'][best_epoch]
+            print(f"Using validation metrics from epoch {best_epoch} (best validation loss: {best_val_loss:.5f})")
+        else:
+            epoch_int = int(args.epoch)
+            if epoch_int in history['val']:
+                test_metrics = history['val'][epoch_int]
+            else:
+                raise KeyError(f"Epoch {args.epoch} not found in validation history. Available epochs: {sorted(history['val'].keys())}")
+    else:
+        # Original behaviour: get test metrics for the requested epoch
+        test = history['test'].get(args.epoch, None)
+        if test is None:
+            raise KeyError(f"Epoch '{args.epoch}' not found in test history. Available: {list(history['test'].keys())}")
+        test_metrics = test
     
     # Print basic statistics
-    print(f'Loss for epoch "{args.epoch}": {test["loss"]}')
+    print(f'Loss for epoch "{args.epoch}": {test_metrics["loss"]}')
     
     for key in ['Accuracy', 'F1Score', 'Precision', 'Recall', 'MSE', 'MAE', 'AUROC']:
-        if key in test.keys():
-            print(f'{key} for epoch "{args.epoch}": {test[key]}')
+        if key in test_metrics.keys():
+            print(f'{key} for epoch "{args.epoch}": {test_metrics[key]}')
 
     # Extract result statistics
-    plots_path = os.path.join(args.test_dir,'plot')
+    plots_path = os.path.join(args.test_dir, 'plot')
     os.makedirs(plots_path, exist_ok=True)
 
     # Training vs Validation Loss
     epochs = np.asarray(list(history['train'].keys()), dtype=int)
-    tr_loss = np.array([_['loss'] for _ in history['train'].values()])
-    val_loss = np.array([_['loss'] for _ in history['val'].values()])
+    tr_loss = np.array([history['train'][ep]['loss'] for ep in epochs])
+    val_loss = np.array([history['val'][ep]['loss'] for ep in epochs])
 
     plt.plot(epochs, tr_loss, val_loss)
     if tr_loss.max()/tr_loss.min() > 10 or val_loss.max()/val_loss.min() > 10:
@@ -110,15 +146,42 @@ if __name__ == '__main__':
     plt.savefig(save_path)
     plt.close('all')
     print(f"Training vs Validation diagram saved to: {save_path}")
+
+    # Extract learning rates from training history (key 'lr' stored per epoch)
+    lr_values = []
+    for ep in epochs:
+        lr = history['train'][ep].get('lr', None)
+        if lr is None:
+            print(f"Warning: No learning rate found for epoch {ep}. LR plot will be incomplete.")
+            lr_values.append(np.nan)
+        else:
+            lr_values.append(lr)
     
-    if 'PrecisionRecallCurve' in test.keys():
+    # Filter out epochs where lr is missing (if any)
+    mask = ~np.isnan(lr_values)
+    if np.any(mask):
+        plt.figure()
+        plt.plot(epochs[mask], np.array(lr_values)[mask], marker='.', linestyle='-', color='green')
+        plt.title(f'Learning Rate Schedule - {DATASET_NAME.upper()}')
+        plt.xlabel('Epoch')
+        plt.ylabel('Learning Rate')
+        plt.yscale('log')  # LR typically changes on log scale
+        plt.grid(True, which='both', linestyle='--', alpha=0.5)
+        save_path_lr = os.path.join(plots_path, 'lr_schedule.png')
+        plt.savefig(save_path_lr)
+        plt.close('all')
+        print(f"Learning rate schedule saved to: {save_path_lr}")
+    else:
+        print("No learning rate data found in history; skipping LR plot.")
+    
+    if 'PrecisionRecallCurve' in test_metrics.keys():
         import torch
         import torchmetrics
         from rbfkan_utils.config import *
         
-        pr_curve = instantiate(train_config['eval_criteria'],'PrecisionRecallCurve')
+        pr_curve = instantiate(train_config['eval_criteria'], 'PrecisionRecallCurve')
         
-        plt_args = [torch.tensor(_).float() for _ in test['PrecisionRecallCurve']]
+        plt_args = [torch.tensor(_).float() for _ in test_metrics['PrecisionRecallCurve']]
         fig, ax = pr_curve.plot(curve = plt_args, score=True)
             
         save_path = os.path.join(plots_path, 'precision_recall_curve.png')
@@ -127,7 +190,7 @@ if __name__ == '__main__':
         print(f"Precision-Recall Curve saved to: {save_path}")
         
     # Read ground truth and predicted values
-    rslt_path = os.path.join(args.test_dir,'rslt')
+    rslt_path = os.path.join(args.test_dir, 'rslt')
 
     gt_df = pd.read_csv(os.path.join(rslt_path, 'ground_truth.csv'), index_col='Index')
     pr_df = pd.read_csv(os.path.join(rslt_path, f'{args.epoch}.csv'), index_col='Index')
