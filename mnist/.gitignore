@@ -1,2 +1,6 @@
 dataset/
 train/
+
+tr_statistics.csv
+val_statistics.csv
+val_statistics(1).csv
