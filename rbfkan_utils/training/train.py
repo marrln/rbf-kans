@@ -10,7 +10,7 @@ import os
 import inspect
 
 from .evaluate import evaluate, get_callable_basis
-from ..utils import save_model, load_model, save_dict, to, tolist
+from ..utils import save_checkpoint, load_checkpoint, to, tolist
 
 def train(
     model: Module,
@@ -22,10 +22,10 @@ def train(
     scheduler: LRScheduler,
     epochs: int,
     patience: Optional[int] = None,
+    resume_training: bool = False,          # NEW: enable resuming from last.pt
     sample_weight: bool = False,
     clip_limit: float = 1.0,
-    history: Optional[Dict] = None,
-    start_epoch: int = 0,
+    history: Optional[Dict] = None,         # used only when NOT resuming
     update_limit: Union[bool, int, float] = True,
     top_dirname: str = './train',
     device: torch.device = torch.device('cpu'),
@@ -42,38 +42,41 @@ def train(
         callbacks = get_callable_basis()
     if callbacks_arguments is None:
         callbacks_arguments = {}
-    if history is None:
-        history = {'train': {}, 'val': {}}
 
     # Add 'loss' to eval_criteria if missing
     if 'loss' not in eval_criteria:
-        eval_criteria = {
-            'loss': criterion,
-            **eval_criteria
-        }
+        eval_criteria = {'loss': criterion, **eval_criteria}
 
-    if len(history['train']) > 0:
-        start_epoch = max(history['train'].keys())
-        best_loss = min([v['loss'] for v in history['train'].values()])
-        
-        # BUG:
-        # We need to load model and optimizer state to resume training properly
-        # We will also need to update the scheduler state if it is not None.
-        # Auto-resume from saved checkpoint
-        checkpoint_path = os.path.join(model_dirname, 'last.pt')  # or .pth
-        if os.path.exists(checkpoint_path):
-            print(f"Resuming training from {checkpoint_path}")
-            checkpoint = torch.load(checkpoint_path, map_location=device)
-            model.load_state_dict(checkpoint['model_state_dict'])
-            optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-            scheduler.load_state_dict(checkpoint['scheduler_state_dict'])  # if scheduler supports
-            # Optionally restore RNG
-            if 'rng_state' in checkpoint:
-                torch.random.set_rng_state(checkpoint['rng_state'])
+    # Prepare saving directories
+    os.makedirs(top_dirname, exist_ok=True)
+    model_dirname = os.path.join(top_dirname, 'models')
+    os.makedirs(model_dirname, exist_ok=True)
+
+    checkpoint_path = os.path.join(model_dirname, 'last.pt')
+    resumed = False
+
+    if resume_training and os.path.exists(checkpoint_path):
+        print(f"Resuming training from {checkpoint_path}")
+        checkpoint = load_checkpoint(
+            checkpoint_path,
+            model=model,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            load_rng=True,
+            device=device
+        )
+        last_completed_epoch = checkpoint['epoch']
+        best_loss = checkpoint['best_loss']
+        history = checkpoint['history']
+        start_epoch = last_completed_epoch + 1   # next epoch to run
+        resumed = True
     else:
+        if history is None:
+            history = {'train': {}, 'val': {}}
+        start_epoch = 0
         best_loss = float('inf')
 
-    best_epoch = start_epoch
+    best_epoch = start_epoch - 1 if resumed else start_epoch
     patience_counter = 0
     val_loss = float('inf')
 
@@ -86,16 +89,11 @@ def train(
     criterion_signature = inspect.signature(criterion)
     accepts_weight = 'weight' in criterion_signature.parameters
 
-    # Prepare saving directories
-    os.makedirs(top_dirname, exist_ok=True)
-    model_dirname = os.path.join(top_dirname, 'models')
-    os.makedirs(model_dirname, exist_ok=True)
-
     # Progress bars
     if show_pbar == 'external':
-        pbar_epoch = tqdm(range(start_epoch + 1, start_epoch + epochs + 1), dynamic_ncols=True)
+        pbar_epoch = tqdm(range(start_epoch, start_epoch + epochs), dynamic_ncols=True)
     else:
-        pbar_epoch = range(start_epoch + 1, start_epoch + epochs + 1)
+        pbar_epoch = range(start_epoch, start_epoch + epochs)
 
     descr = 'Epoch {epoch} -- Tr Loss {tr_loss:.5f} -- Val Loss {val_loss:.5f} -- Best [{best_epoch}] {best_loss:.5f}'
 
@@ -127,7 +125,7 @@ def train(
                 pbar_iter = train_dataloader
 
             if saving_steps == 'log':
-                _saving_steps = max(1, int(np.ceil(2 * np.log(epoch)) + 1))
+                _saving_steps = max(1, int(np.ceil(2 * np.log(epoch + 1)) + 1))
 
             # Epoch start callbacks
             for cb in callbacks.get('epoch_start', []):
@@ -171,7 +169,6 @@ def train(
                     else:
                         with open(os.path.join(top_dirname, 'error.log'), 'w') as f:
                             print(tolist(data), tolist(target), tolist(prediction), loss.item(), file=f)
-                        save_dict(history, os.path.join(model_dirname, 'history'))
                         raise ValueError(f"NaN/Inf loss at epoch {epoch}, iter {_iter}")
 
                 tr_loss += loss.detach().cpu().item()
@@ -243,6 +240,11 @@ def train(
             history['val'][epoch] = val_metrics
             val_loss = val_metrics['loss']
 
+            # --- LR tracking: record current learning rate used in this epoch ---
+            current_lr = optimizer.param_groups[0]['lr']   # assumes single param group
+            history['train'][epoch]['lr'] = current_lr
+            # ------------------------------------------------------------------
+
             # Update progress bars
             if show_pbar == 'internal':
                 pbar_iter.set_description(descr.format(epoch=epoch, tr_loss=tr_loss, val_loss=val_loss,
@@ -252,15 +254,22 @@ def train(
                 pbar_epoch.set_description(descr.format(epoch=epoch, tr_loss=tr_loss, val_loss=val_loss,
                                                         best_epoch=best_epoch, best_loss=best_loss))
 
-            # Save checkpoint
+            # Save periodic checkpoint (full state)
             if _saving_steps > 0 and (epoch % _saving_steps == 0):
-                save_model(model, os.path.join(model_dirname, 'last'), device)
-                save_dict(history, os.path.join(top_dirname, 'history'))
+                save_checkpoint(
+                    model, optimizer, scheduler, epoch, best_loss, history,
+                    os.path.join(model_dirname, 'last.pt'),
+                    rng_state=torch.random.get_rng_state()
+                )
 
             # Early stopping and best model saving
             if val_loss < best_loss:
                 best_loss = val_loss
-                save_model(model, os.path.join(model_dirname, 'best'), device)
+                save_checkpoint(
+                    model, optimizer, scheduler, epoch, best_loss, history,
+                    os.path.join(model_dirname, 'best.pt'),
+                    rng_state=torch.random.get_rng_state()
+                )
                 patience_counter = 0
                 best_epoch = epoch
             elif patience is not None and patience > 0:
@@ -289,14 +298,21 @@ def train(
                train_dataloader=train_dataloader, eval_dataloader=eval_dataloader,
                optimizer=optimizer, scheduler=scheduler, device=device, history=history,
                exception=e, **callbacks_arguments)
-        save_model(model, os.path.join(model_dirname, 'last'), device)
-        save_dict(history, os.path.join(top_dirname, 'history'))
+        # Save final checkpoint on exception
+        save_checkpoint(
+            model, optimizer, scheduler, epoch, best_loss, history,
+            os.path.join(model_dirname, 'last.pt'),
+            rng_state=torch.random.get_rng_state()
+        )
         raise e
 
-    # Final save if needed
+    # Final save if not already saved on the last epoch
     if _saving_steps < 1 or (epoch % _saving_steps != 0):
-        save_model(model, os.path.join(model_dirname, 'last'), device)
-        save_dict(history, os.path.join(top_dirname, 'history'))
+        save_checkpoint(
+            model, optimizer, scheduler, epoch, best_loss, history,
+            os.path.join(model_dirname, 'last.pt'),
+            rng_state=torch.random.get_rng_state()
+        )
 
     # Training finished callbacks
     for cb in callbacks.get('training_finished', []):
