@@ -64,7 +64,7 @@ if __name__ == '__main__':
     import torch
     import albumentations as A
     from torch.utils.data import DataLoader
-    from rbfkan_utils.utils import load_model, load_dict, save_dict, set_seed, apply_to_tensor
+    from rbfkan_utils.utils import load_checkpoint, save_checkpoint, set_seed, apply_to_tensor
     from rbfkan_utils.config import *
     from rbfkan_utils.training import evaluate
 
@@ -75,27 +75,39 @@ if __name__ == '__main__':
     model_config = load_config(args.model_config, locals=get_locals())
     set_seed(train_config['seed'])
 
-    # Instantiate model
-    model = instantiate(model_config, 'model')
+    # Instantiate model, optimizer, and scheduler (same as in training)
+    model     = instantiate(model_config, 'model')
+    criterion = instantiate(train_config, 'criterion')
+    optimizer = instantiate(train_config, 'optimizer', model.parameters(), lr=train_config['lr'])
+    scheduler = instantiate(train_config, 'scheduler', optimizer)
 
-    # Load model state dict
-    fname = os.path.join(args.test_dir, 'models', args.epoch)
-    model = load_model(model, fname)
+    # Path to the checkpoint (full state)
+    checkpoint_path = os.path.join(args.test_dir, 'models', f'{args.epoch}.pt')
+    if not os.path.exists(checkpoint_path):
+        raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
+
+    print(f"Loading checkpoint from {checkpoint_path}")
+    # Load full checkpoint: model, optimizer, scheduler, history, etc.
+    checkpoint = load_checkpoint(
+        checkpoint_path,
+        model=model,
+        optimizer=optimizer,
+        scheduler=scheduler,
+        load_rng=False,
+        device=device
+    )
+    history = checkpoint['history']   # contains 'train' and 'val' (and maybe previous 'test')
 
     # Instantiate callbacks
     callbacks = weak_instantiate_all(train_config['callbacks'])
     callbacks_arguments = weak_instantiate_all(train_config['callbacks_arguments'])
 
     # Instantiate evaluation criteria
-    eval_criteria = {
-        **weak_instantiate_all(train_config['eval_criteria'])
-    }
-    if 'loss' not in eval_criteria.keys():
-        eval_criteria.update({
-            'loss' : instantiate(train_config,'criterion'),
-        })
+    eval_criteria = weak_instantiate_all(train_config['eval_criteria'])
+    if 'loss' not in eval_criteria:
+        eval_criteria['loss'] = instantiate(train_config, 'criterion')
     print('-- Evaluation Criteria :')
-    if len(eval_criteria):
+    if eval_criteria:
         for key, val in eval_criteria.items():
             print('  --', key, ':', val)
     else:
@@ -105,20 +117,16 @@ if __name__ == '__main__':
     data, labels = get_dataset('test')
     
     preprocess_data = A.Compose([
-            *([] if 'resize' not in train_config.keys() else [A.Resize(*train_config['resize'])]),
-            A.Normalize(normalization = 'min_max_per_channel'), 
-            A.ToTensorV2(),    
-        ], 
-        # telemetry   = False,
-        seed        = train_config['seed'],
-    )
+        *([] if 'resize' not in train_config else [A.Resize(*train_config['resize'])]),
+        A.Normalize(normalization='min_max_per_channel'),
+        A.ToTensorV2(),
+    ], seed=train_config['seed'])
     
     test_dataset = GenericDataset(
         data, labels,
         task                    = train_config['task'],
         return_key              = True,
         return_weights          = train_config['sample_weight'],
-        # preprocess_data         = lambda **kwargs: preprocess_data(**kwargs)[list(kwargs.keys())[0]],
         preprocess_data         = lambda x: preprocess_data(image=x)["image"],
         preprocess_targ         = None,
         flatten                 = model_config['flatten'],
@@ -138,7 +146,7 @@ if __name__ == '__main__':
         eval_dataloader     = test_loader,
         criteria            = eval_criteria,
         keep_copy           = True,
-        checkpoint_path     = fname.replace('models','rslt'),
+        checkpoint_path     = checkpoint_path.replace('models', 'rslt'),
         epoch               = args.epoch,
         sample_weight       = train_config['sample_weight'],
         show_pbar           = not args.no_pbar,
@@ -150,17 +158,28 @@ if __name__ == '__main__':
         },
     )
 
-    hist_path = os.path.join(args.test_dir,'history')
-    history = load_dict(hist_path)
+    # Store test metrics in history
+    if 'test' not in history:
+        history['test'] = {}
+    history['test'][args.epoch] = test_metrics
 
-    history['test'] = {
-        args.epoch : test_metrics
-    }
-    save_dict(history, hist_path)
+    # Save the updated checkpoint (preserving model, optimizer, scheduler, etc.)
+    save_checkpoint(
+        model,
+        optimizer,
+        scheduler,
+        epoch=checkpoint['epoch'],
+        best_loss=checkpoint['best_loss'],
+        history=history,
+        filepath=checkpoint_path,
+        rng_state=checkpoint.get('rng_state', None)   # keep original RNG state if present
+    )
 
-    # Separate ground truth and predicted values
-    rslt_path = os.path.join(args.test_dir,'rslt')
-    test_df = pd.read_csv(os.path.join(rslt_path,f'{args.epoch}.csv'), index_col='Index')
+    print(f"Updated checkpoint saved with test metrics for epoch {args.epoch}")
+
+    # Separate ground truth and predicted values (same as original)
+    rslt_path = os.path.join(args.test_dir, 'rslt')
+    test_df = pd.read_csv(os.path.join(rslt_path, f'{args.epoch}.csv'), index_col='Index')
 
     gt_df = test_df[[col for col in test_df.columns if 'targ' in col]]
     pr_df = test_df[[col for col in test_df.columns if 'pred' in col]]
@@ -169,21 +188,21 @@ if __name__ == '__main__':
         gt_df.columns = ['Label']
         gt_df = gt_df['Label'].astype(int)
         if len(pr_df.columns) == 1 and len(model_config['output']) == 2:
-            if model_config['outputs_logits']:
+            if model_config.get('outputs_logits', False):
                 pr_df = pd.DataFrame(
-                    data = torch.sigmoid(torch.tensor(pr_df.values),-1).numpy(),
-                    index = pr_df.index,
-                    columns = [f'Label_Is_{model_config["output"][1]}']
+                    data=torch.sigmoid(torch.tensor(pr_df.values)).numpy(),
+                    index=pr_df.index,
+                    columns=[f'Label_Is_{model_config["output"][1]}']
                 )
             else:
                 pr_df.columns = [f'Label_Is_{model_config["output"][1]}']
             
         elif len(pr_df.columns) > 1:
-            if model_config['outputs_logits']:
+            if model_config.get('outputs_logits', False):
                 pr_df = pd.DataFrame(
-                    data = torch.softmax(torch.tensor(pr_df.values),-1).numpy(),
-                    index = pr_df.index,
-                    columns = [f'Label_Is_{_}' for _ in model_config['output']]
+                    data=torch.softmax(torch.tensor(pr_df.values), dim=-1).numpy(),
+                    index=pr_df.index,
+                    columns=[f'Label_Is_{_}' for _ in model_config['output']]
                 )
             else:
                 pr_df.columns = [f'Label_Is_{_}' for _ in model_config['output']]
@@ -191,15 +210,15 @@ if __name__ == '__main__':
             pr_df.columns = model_config['output']
     else:
         gt_df.columns = model_config['output']
-        if model_config['outputs_logits']:
+        if model_config.get('outputs_logits', False):
             pr_df = pd.DataFrame(
-                data = torch.sigmoid(torch.tensor(pr_df.values),-1).numpy(),
-                index = pr_df.index,
-                columns = model_config['output'] 
+                data=torch.sigmoid(torch.tensor(pr_df.values)).numpy(),
+                index=pr_df.index,
+                columns=model_config['output']
             )
         else:
             pr_df.columns = model_config['output']
-        
+
     gt_df.to_csv(os.path.join(rslt_path, 'ground_truth.csv'))
     pr_df.to_csv(os.path.join(rslt_path, f'{args.epoch}.csv'))
     test_df.to_csv(os.path.join(rslt_path, 'rslt.csv'))
