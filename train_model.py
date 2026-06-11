@@ -8,13 +8,13 @@ if __name__ == '__main__':
     TOP_DIR = os.path.dirname(THIS_DIR)
     sys.path.append(TOP_DIR)
 
-
     parser = ArgumentParser(description=f'Training script ')
     parser.add_argument('--dataset', dest='dataset', type=str, required=True, help=f'Dataset to use (required)')
     parser.add_argument('-d', '--test-dir', dest='test_dir', default=None, help='The directory to be used as a top directory for training, if None uses dataset-specific default directory.')
     parser.add_argument('--hash', dest='hash', type=str, help='The hash value of the configuration.', required=True)
     parser.add_argument('--test-version', dest='test_version', type=str, default='0')
     parser.add_argument('--no-pbar', action='store_true', dest='no_pbar')
+    parser.add_argument('--no-resume', action='store_true', dest='no_resume', help='Do not resume training even if checkpoint exists')
 
     args = parser.parse_args()
     
@@ -194,7 +194,7 @@ if __name__ == '__main__':
         scheduler           = scheduler,
         epochs              = train_config['epochs'],
         patience            = train_config['patience'],
-        update_limit        = 100,
+        resume_training     = not args.no_resume,   # resume by default, use --no-resume to start fresh
         sample_weight       = train_config['sample_weight'],
         clip_limit          = 1.0, # NOTE: / BUG: Grad clipping is hardcoded
         top_dirname         = args.test_dir,
