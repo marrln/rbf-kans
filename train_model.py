@@ -197,6 +197,7 @@ if __name__ == '__main__':
         resume_training     = not args.no_resume,   # resume by default, use --no-resume to start fresh
         sample_weight       = train_config['sample_weight'],
         clip_limit          = 1.0, # NOTE: / BUG: Grad clipping is hardcoded
+        update_limit        = 100,
         top_dirname         = args.test_dir,
         device              = device,
         evaluate_training   = False,
