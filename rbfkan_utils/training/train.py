@@ -89,13 +89,17 @@ def train(
     criterion_signature = inspect.signature(criterion)
     accepts_weight = 'weight' in criterion_signature.parameters
 
+    # Total number of batches per epoch
+    total_batches = len(train_dataloader)
+
     # Progress bars
     if show_pbar == 'external':
         pbar_epoch = tqdm(range(start_epoch, start_epoch + epochs), dynamic_ncols=True)
     else:
         pbar_epoch = range(start_epoch, start_epoch + epochs)
 
-    descr = 'Epoch {epoch} -- Tr Loss {tr_loss:.5f} -- Val Loss {val_loss:.5f} -- Best [{best_epoch}] {best_loss:.5f}'
+    # Description with batch progress: Epoch 5 [120/500] -- Tr Loss ... etc.
+    descr = 'Epoch {epoch} [{iter}/{total}] -- Tr Loss {tr_loss:.5f} -- Val Loss {val_loss:.5f} -- Best [{best_epoch}] {best_loss:.5f}'
 
     # Update period for live logging
     if update_limit:
@@ -189,17 +193,30 @@ def train(
                        dataloader=train_dataloader, optimizer=optimizer, device=device,
                        history=history, **callbacks_arguments)
 
-                # Update progress description
+                # Update progress description periodically
                 if _iter % update_period == 0:
                     avg_loss = tr_loss / _iter
                     if show_pbar == 'internal':
-                        pbar_iter.set_description(descr.format(epoch=epoch, tr_loss=avg_loss,
-                                                               val_loss=val_loss, best_epoch=best_epoch,
-                                                               best_loss=best_loss))
+                        pbar_iter.set_description(descr.format(
+                            epoch=epoch,
+                            iter=_iter,
+                            total=total_batches,
+                            tr_loss=avg_loss,
+                            val_loss=val_loss,
+                            best_epoch=best_epoch,
+                            best_loss=best_loss
+                        ))
                     elif show_pbar == 'external':
-                        pbar_epoch.set_description(descr.format(epoch=f"{epoch}[{_iter}/{len(pbar_iter)}]",
-                                                                tr_loss=avg_loss, val_loss=val_loss,
-                                                                best_epoch=best_epoch, best_loss=best_loss))
+                        # For external pbar, we embed batch info in the epoch field
+                        pbar_epoch.set_description(descr.format(
+                            epoch=f"{epoch}[{_iter}/{total_batches}]",
+                            iter=_iter,
+                            total=total_batches,
+                            tr_loss=avg_loss,
+                            val_loss=val_loss,
+                            best_epoch=best_epoch,
+                            best_loss=best_loss
+                        ))
 
             # End of epoch
             tr_loss /= _iter
@@ -245,14 +262,28 @@ def train(
             history['train'][epoch]['lr'] = current_lr
             # ------------------------------------------------------------------
 
-            # Update progress bars
+            # Final update of progress bars (end of epoch, no batch info)
             if show_pbar == 'internal':
-                pbar_iter.set_description(descr.format(epoch=epoch, tr_loss=tr_loss, val_loss=val_loss,
-                                                       best_epoch=best_epoch, best_loss=best_loss))
+                pbar_iter.set_description(descr.format(
+                    epoch=epoch,
+                    iter=total_batches,   # show last batch
+                    total=total_batches,
+                    tr_loss=tr_loss,
+                    val_loss=val_loss,
+                    best_epoch=best_epoch,
+                    best_loss=best_loss
+                ))
                 pbar_iter.close()
             elif show_pbar == 'external':
-                pbar_epoch.set_description(descr.format(epoch=epoch, tr_loss=tr_loss, val_loss=val_loss,
-                                                        best_epoch=best_epoch, best_loss=best_loss))
+                pbar_epoch.set_description(descr.format(
+                    epoch=epoch,
+                    iter=total_batches,
+                    total=total_batches,
+                    tr_loss=tr_loss,
+                    val_loss=val_loss,
+                    best_epoch=best_epoch,
+                    best_loss=best_loss
+                ))
 
             # Save periodic checkpoint (full state)
             if _saving_steps > 0 and (epoch % _saving_steps == 0):
