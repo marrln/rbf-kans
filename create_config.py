@@ -231,9 +231,8 @@ if __name__ == '__main__':
     train_config.update(
         object_to_config(
             getattr(torch.optim, args.optimizer),
-            target_name='optimizer',
-            weight_decay=args.weight_decay,
-            amsgrad=True,
+            target_name = 'optimizer',
+            weight_decay = args.weight_decay,
             **({'momentum': args.momentum} if uses_momentum(args.optimizer) else {})
         )
     )
@@ -241,9 +240,9 @@ if __name__ == '__main__':
     train_config.update(
         object_to_config(
             torch.optim.lr_scheduler.ReduceLROnPlateau,
-            factor=args.lr_factor,
-            patience=args.lr_patience,
-            target_name='scheduler'
+            factor = args.lr_factor,
+            patience = args.lr_patience,
+            target_name = 'scheduler'
         )
     )
     
@@ -251,11 +250,11 @@ if __name__ == '__main__':
     train_config['callbacks_arguments'].update({
         **object_to_config(
             GatherStatistics,
-            input_cols=model_config['input'],
-            output_cols=model_config['output'],
-            task=train_config['task'],
-            export_path=os.path.join(DATASET_DIR, 'tr_statistics.csv'),
-            target_name='train_gatherer',
+            input_cols = model_config['input'],
+            output_cols = model_config['output'],
+            task = train_config['task'],
+            export_path = os.path.join(DATASET_DIR, 'tr_statistics.csv'),
+            target_name = 'train_gatherer',
         ),
         **object_to_config(
             GatherStatistics,
