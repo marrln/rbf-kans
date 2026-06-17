@@ -157,6 +157,9 @@ def save_checkpoint(
         'history': history,
     }
     if rng_state is not None:
+        # Ensure rng_state is a ByteTensor for serialization
+        if not isinstance(rng_state, torch.ByteTensor):
+            rng_state = torch.tensor(rng_state, dtype=torch.uint8)
         checkpoint['rng_state'] = rng_state
     torch.save(checkpoint, filepath)
 
@@ -193,6 +196,12 @@ def load_checkpoint(
     if scheduler is not None:
         scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
     if load_rng and 'rng_state' in checkpoint:
-        torch.random.set_rng_state(checkpoint['rng_state'])
+        rng_state = checkpoint['rng_state']
+        if not isinstance(rng_state, torch.ByteTensor):
+            # Convert to ByteTensor on CPU using detach().clone()
+            rng_state = rng_state.detach().clone().to(dtype=torch.uint8, device='cpu').contiguous()
+        else:
+            rng_state = rng_state.cpu().contiguous()
+        torch.random.set_rng_state(rng_state)
 
     return checkpoint
