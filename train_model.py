@@ -113,6 +113,8 @@ if __name__ == '__main__':
             A.SafeRotate(limit=(-90, 90), p=train_config['probability']),
             *([] if train_config['resize'] == 'None' else [A.Resize(*train_config['resize'])]),
             
+            # A.ShiftScaleRotate(scale_limit=(-0.2, 0), rotate_limit=(-90, 90), p=train_config['probability']),
+            # A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1, p=train_config['probability']),
             
             A.Normalize(normalization='min_max_per_channel'),
             A.ToTensorV2(),
