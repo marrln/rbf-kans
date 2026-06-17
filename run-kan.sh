@@ -42,6 +42,18 @@ dryrun=0
 verbose=0
 exp_hash=
 
+# Helper function to split a space-separated string into an array
+split_args() {
+    local var="$1"
+    local -n arr="$2"
+    if [ -n "$var" ]; then
+        # Use word splitting to separate values
+        IFS=' ' read -r -a arr <<< "$var"
+    else
+        arr=()
+    fi
+}
+
 dry_run() {
     if [ $dryrun -lt 1 ]; then
         "$@"
@@ -100,11 +112,21 @@ cd "$THIS_DIR" || exit 1
 
 if [ -z "$exp_hash" ]; then
     CONFIGS=()
-    [ -n "$LAYERS" ] && CONFIGS+=(--layers "$LAYERS")
-    [ -n "$NUM_GRIDS" ] && CONFIGS+=(--num-grids "$NUM_GRIDS")
-    [ -n "$GRID_MIN" ] && CONFIGS+=(--grid-min "$GRID_MIN")
-    [ -n "$GRID_MAX" ] && CONFIGS+=(--grid-max "$GRID_MAX")
-    [ -n "$SCALE" ] && CONFIGS+=(--scale "$SCALE")
+    
+    # Split multi-value arguments
+    split_args "$LAYERS" layers_arr
+    split_args "$NUM_GRIDS" grids_arr
+    split_args "$GRID_MIN" grid_min_arr
+    split_args "$GRID_MAX" grid_max_arr
+    split_args "$SCALE" scale_arr
+    
+    # Append them as separate elements
+    [ ${#layers_arr[@]} -gt 0 ] && CONFIGS+=(--layers "${layers_arr[@]}")
+    [ ${#grids_arr[@]} -gt 0 ] && CONFIGS+=(--num-grids "${grids_arr[@]}")
+    [ ${#grid_min_arr[@]} -gt 0 ] && CONFIGS+=(--grid-min "${grid_min_arr[@]}")
+    [ ${#grid_max_arr[@]} -gt 0 ] && CONFIGS+=(--grid-max "${grid_max_arr[@]}")
+    [ ${#scale_arr[@]} -gt 0 ] && CONFIGS+=(--scale "${scale_arr[@]}")
+    
     [ -n "$MODE" ] && CONFIGS+=(--mode "$MODE")
     [ "$RESIDUAL" -eq 1 ] && CONFIGS+=(--residual)
     [ "$DYNAMIC" -eq 1 ] && CONFIGS+=(--dynamic)
