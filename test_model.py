@@ -25,7 +25,7 @@ if __name__ == '__main__':
     dataset_path = os.path.join(THIS_DIR, args.dataset)
     if dataset_path not in sys.path:
         sys.path.insert(0, dataset_path)
-    from prepare_dataset import get_dataset, DATASET_DIR
+    from prepare_dataset import get_dataset, DATASET_DIR # pyright: ignore[reportMissingImports]
     
     # Add test dir
     if args.test_dir is None:

@@ -54,7 +54,7 @@ if __name__ == '__main__':
     dataset_path = os.path.join(THIS_DIR, args.dataset)
     if dataset_path not in sys.path:
         sys.path.insert(0, dataset_path)
-    from prepare_dataset import DATASET_DIR, get_dataset_info, get_class_names
+    from prepare_dataset import DATASET_DIR, get_dataset_info, get_class_names # pyright: ignore[reportMissingImports]
     
     # Set default after DATASET_DIR is available
     if args.dest_top_dir is None:
