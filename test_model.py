@@ -115,7 +115,8 @@ if __name__ == '__main__':
     ], seed=train_config['seed'])
     
     test_dataset = GenericDataset(
-        data, labels,
+        data                    = data, 
+        labels                  = labels,
         task                    = train_config['task'],
         return_key              = True,
         return_weights          = train_config['sample_weight'],
@@ -131,7 +132,7 @@ if __name__ == '__main__':
     )
 
     print('-- Using dataset split :', train_config['splits'])
-    print('  -- Test       :', len(test_loader.dataset))
+    print('-- Test Size:', len(test_loader.dataset))
 
     test_metrics = evaluate(
         model,
