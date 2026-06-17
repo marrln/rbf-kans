@@ -68,7 +68,7 @@ if __name__ == '__main__':
     from rbfkan_utils.config import *
     from rbfkan_utils.utils.dataset import smart_split_dataset
     from rbfkan_utils.training import train
-    from rbfkan_utils.utils import set_seed, apply_to_tensor
+    from rbfkan_utils.utils import set_seed
     from rbfkan_utils.utils.summary import get_summary
     from custom_dataset import GenericDataset
 
