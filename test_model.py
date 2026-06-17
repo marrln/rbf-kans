@@ -109,7 +109,7 @@ if __name__ == '__main__':
     data, labels = get_dataset('test')
     
     preprocess_data = A.Compose([
-        *([] if 'resize' not in train_config else [A.Resize(*train_config['resize'])]),
+        *([] if train_config['resize'] == 'None' else [A.Resize(*train_config['resize'])]),
         A.Normalize(normalization='min_max_per_channel'),
         A.ToTensorV2(),
     ], seed=train_config['seed'])
