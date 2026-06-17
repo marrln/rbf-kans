@@ -98,20 +98,12 @@ if __name__ == '__main__':
     )
     history = checkpoint['history']   # contains 'train' and 'val' (and maybe previous 'test')
 
-    # Instantiate callbacks
+    # Instantiate callbacks and evaluation criteria
     callbacks = weak_instantiate_all(train_config['callbacks'])
     callbacks_arguments = weak_instantiate_all(train_config['callbacks_arguments'])
-
-    # Instantiate evaluation criteria
     eval_criteria = weak_instantiate_all(train_config['eval_criteria'])
     if 'loss' not in eval_criteria:
         eval_criteria['loss'] = instantiate(train_config, 'criterion')
-    print('-- Evaluation Criteria :')
-    if eval_criteria:
-        for key, val in eval_criteria.items():
-            print('  --', key, ':', val)
-    else:
-        print('  No evaluation criteria.')
 
     # Get test dataset
     data, labels = get_dataset('test')
