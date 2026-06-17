@@ -75,7 +75,6 @@ if __name__ == '__main__':
     # Get dataset info
     dataset_info = get_dataset_info()
     num_classes = dataset_info['num_classes']
-    is_multiclass = dataset_info['task'] == 'multiclass'
     
     # Determine number of channels from dataset_info
     channels = dataset_info['input_shape'][2] if len(dataset_info['input_shape']) == 3 else 3
@@ -98,7 +97,7 @@ if __name__ == '__main__':
     model_config['flatten'] = True
     
     # Determine final activation (only if not outputting logits)
-    if is_multiclass:
+    if dataset_info['task'] == 'multiclass':
         if args.with_logits:
             final_act = torch.nn.Identity
         else:
@@ -149,12 +148,12 @@ if __name__ == '__main__':
     
     # --- Training configuration ---
     train_config = get_default_training_config()
-    train_config['task'] = 'multiclass' if is_multiclass else 'multilabel'
+    train_config['task'] = dataset_info['task']
     train_config['sampler'] = ['Label']
     train_config['splits'] = [0.8, 0.2]
     
     # Loss function
-    if is_multiclass:
+    if dataset_info['task'] == 'multiclass':
         if args.with_logits:
             train_config.update(object_to_config(
                 torch.nn.CrossEntropyLoss,
@@ -182,7 +181,7 @@ if __name__ == '__main__':
             ))
     
     # Evaluation criteria
-    if is_multiclass:
+    if dataset_info['task'] == 'multiclass':
         targ_apply = 'lambda target: target.to(torch.int64).squeeze(-1)'
         train_config['eval_criteria'] = {
             **object_to_config(
@@ -293,12 +292,12 @@ if __name__ == '__main__':
         ),
         **object_to_config(
             GatherStatistics,
-            input_cols=model_config['input'],
-            output_cols=model_config['output'],
-            task=train_config['task'],
-            export_path=os.path.join(DATASET_DIR, 'val_statistics.csv'),
-            overwrite=1,
-            target_name='val_gatherer',
+            input_cols = model_config['input'],
+            output_cols = model_config['output'],
+            task = train_config['task'],
+            export_path = os.path.join(DATASET_DIR, 'val_statistics.csv'),
+            overwrite = 1,
+            target_name = 'val_gatherer',
         ),
     })
     
