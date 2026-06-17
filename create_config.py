@@ -294,17 +294,28 @@ if __name__ == '__main__':
     
     # Helper to build hash and directory
     def build_test_dir(train_config, model_config, top_dir=None, test_version=None):
-        pdir = os.path.join(
-            '_'.join(['_'.join([key, str(val)]) for key, val in train_config.items()]),
-            '_'.join(['_'.join([key, str(val)]) for key, val in model_config.items()]),
-        )
-        hashed = hashlib.sha1(pdir.encode()).hexdigest()
-        pdir = hashed
+
+        exclude_keys = {'callbacks', 'callbacks_arguments', 'epochs'}
+
+        def filter_items(d):
+            return [(k, v) for k, v in d.items()
+                    if k not in exclude_keys and not callable(v)]
+
+        items = filter_items(train_config) + filter_items(model_config)
+        items.sort(key=lambda x: x[0])
+        data = '_'.join(f"{key}={val}" for key, val in items)
+
+        hashed_dir_name = hashlib.sha1(data.encode()).hexdigest()
+
         if top_dir is not None:
-            pdir = os.path.join(top_dir, pdir)
+            pdir = os.path.join(top_dir, hashed_dir_name)
+        else:
+            pdir = hashed_dir_name
+
         if test_version is not None:
-            pdir = os.path.join(pdir, '_'.join(['test', test_version]))
-        return pdir, hashed
+            pdir = os.path.join(pdir, f"test_{test_version}")
+
+        return pdir, hashed_dir_name
 
     pdir, hashed = build_test_dir(train_config, model_config, top_dir=args.dest_top_dir, test_version=args.test_version)
 
