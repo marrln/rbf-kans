@@ -108,13 +108,12 @@ if __name__ == '__main__':
     # BUG: we apply data augmentation on the CPU plus on the validation set    
     preprocess_data = A.Compose([
             # NOTE: Here you can edit the data augmentation pipeline as needed
-            # BUG: Need dedicated callbacks 
-            # A.HorizontalFlip(p=train_config['probability']),
-            # A.VerticalFlip(p=train_config['probability']),
-            # A.ShiftScaleRotate(scale_limit=(-0.2, 0), rotate_limit=(-90, 90), p=train_config['probability']),
-            # A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1, p=train_config['probability']),
-            # A.SafeRotate(limit=(-90, 90), p=train_config['probability']),
-            *([] if 'resize' not in train_config.keys() else [A.Resize(*train_config['resize'])]),
+            A.HorizontalFlip(p=train_config['probability']),
+            A.VerticalFlip(p=train_config['probability']),
+            A.SafeRotate(limit=(-90, 90), p=train_config['probability']),
+            *([] if train_config['resize'] == 'None' else [A.Resize(*train_config['resize'])]),
+            
+            
             A.Normalize(normalization='min_max_per_channel'),
             A.ToTensorV2(),
         ],
