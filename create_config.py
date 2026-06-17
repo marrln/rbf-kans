@@ -193,9 +193,39 @@ if __name__ == '__main__':
             ),
             **object_to_config(
                 ProcessAndApplyMetric,
+                object_to_config(torchmetrics.Accuracy, task='multiclass', num_classes=num_classes, top_k=3),
+                targ_apply=targ_apply,
+                target_name='Top3Accuracy',
+            ),
+            **object_to_config(
+                ProcessAndApplyMetric,
+                object_to_config(torchmetrics.Accuracy, task='multiclass', num_classes=num_classes, top_k=5),
+                targ_apply=targ_apply,
+                target_name='Top5Accuracy',
+            ),
+            **object_to_config(
+                ProcessAndApplyMetric,
                 object_to_config(torchmetrics.F1Score, task='multiclass', num_classes=num_classes),
                 targ_apply=targ_apply,
                 target_name='F1Score',
+            ),
+            **object_to_config(
+                ProcessAndApplyMetric,
+                object_to_config(torchmetrics.Precision, task='multiclass', num_classes=num_classes),
+                targ_apply=targ_apply,
+                target_name='Precision',
+            ),
+            **object_to_config(
+                ProcessAndApplyMetric,
+                object_to_config(torchmetrics.Recall, task='multiclass', num_classes=num_classes),
+                targ_apply=targ_apply,
+                target_name='Recall',
+            ),
+            **object_to_config(
+                ProcessAndApplyMetric,
+                object_to_config(torchmetrics.Specificity, task='multiclass', num_classes=num_classes),
+                targ_apply=targ_apply,
+                target_name='Specificity',
             ),
             **object_to_config(
                 ProcessAndApplyMetric,
@@ -207,7 +237,12 @@ if __name__ == '__main__':
     else:
         train_config['eval_criteria'] = {
             **object_to_config(torchmetrics.Accuracy, task='binary', target_name='Accuracy'),
+            **object_to_config(torchmetrics.Accuracy, task='binary', top_k=3, target_name='Top3Accuracy'),
+            **object_to_config(torchmetrics.Accuracy, task='binary', top_k=5, target_name='Top5Accuracy'),
             **object_to_config(torchmetrics.F1Score, task='binary', target_name='F1Score'),
+            **object_to_config(torchmetrics.Precision, task='binary', target_name='Precision'),
+            **object_to_config(torchmetrics.Recall, task='binary', target_name='Recall'),
+            **object_to_config(torchmetrics.Specificity, task='binary', target_name='Specificity'),
             **object_to_config(
                 ProcessAndApplyMetric,
                 object_to_config(torchmetrics.PrecisionRecallCurve, task='binary', thresholds=100, normalization=False),
