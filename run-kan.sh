@@ -3,33 +3,45 @@
 ########################################
 # Configuration arguments
 ########################################
-DATASET="cifar10"
-TEST_VERSION=""
+
+TEST_VERSION="first_runs"
 SEED=42
-WITH_LOGITS=1
+
+# Dataset Configuration
+DATASET="mnist"
 RESIZE=""
-LAYERS="36"
-NUM_GRIDS="4"
+AUGMENT_PROBABILITY=0.25
+
+# Model Configuration
+WITH_LOGITS=1
+LAYERS="8"
+NUM_GRIDS="8"
 GRID_MIN="-1.5"
 GRID_MAX="1.5"
-SCALE="5"
-MODE="RSWAFF"
-RESIDUAL=0
+SCALE="2"
+MODE="PReLU"
+RESIDUAL=1
 DYNAMIC=0
 USE_V2=0
 NO_NORMALIZE=0
 NO_NORMALIZE_RBF=0
 DROPOUT=0.1
 LINEAR_DROPOUT=0.1
-EPOCHS=2
-PATIENCE=50
-BATCH=100
-LR=5e-2
+USE_DYNAMIC_DROPOUT=0
+
+# Training Configuration
+EPOCHS=1000
+BATCH_SIZE=100
+EARLY_STOPPING_PATIENCE=50
+LR=1e-5
 LR_FACTOR=0.5
 LR_PATIENCE=10
 OPTIMIZER="AdamW"
+GRAD_CLIP_LIMIT=1.0
 WEIGHT_DECAY=5e-2
 MOMENTUM=0.9
+
+# Python executable
 PYTHON=python
 
 ########################################
@@ -134,16 +146,19 @@ if [ -z "$exp_hash" ]; then
     [ "$NO_NORMALIZE" -eq 1 ] && CONFIGS+=(--no-normalize)
     [ "$NO_NORMALIZE_RBF" -eq 1 ] && CONFIGS+=(--no-normalize-rbf)
     [ -n "$RESIZE" ] && CONFIGS+=(--resize $RESIZE)
+    [ -n "$AUGMENT_PROBABILITY" ] && CONFIGS+=(--augment-probability "$AUGMENT_PROBABILITY")
     [ -n "$DROPOUT" ] && CONFIGS+=(--dropout "$DROPOUT")
     [ -n "$LINEAR_DROPOUT" ] && CONFIGS+=(--dropout-linear "$LINEAR_DROPOUT")
+    [ -n "$DYNAMIC_DROPOUT" ] && CONFIGS+=(--dynamic-dropout)
     [ -n "$EPOCHS" ] && CONFIGS+=(--epochs "$EPOCHS")
-    [ -n "$PATIENCE" ] && CONFIGS+=(--patience "$PATIENCE")
-    [ -n "$BATCH" ] && CONFIGS+=(--batch "$BATCH")
+    [ -n "$EARLY_STOPPING_PATIENCE" ] && CONFIGS+=(--patience "$EARLY_STOPPING_PATIENCE")
+    [ -n "$BATCH_SIZE" ] && CONFIGS+=(--batch "$BATCH_SIZE")
     [ -n "$LR" ] && CONFIGS+=(--lr "$LR")
     [ -n "$LR_FACTOR" ] && CONFIGS+=(--lr-factor "$LR_FACTOR")
     [ -n "$LR_PATIENCE" ] && CONFIGS+=(--lr-patience "$LR_PATIENCE")
     [ -n "$OPTIMIZER" ] && CONFIGS+=(--optimizer "$OPTIMIZER")
     [ -n "$WEIGHT_DECAY" ] && CONFIGS+=(--weight-decay "$WEIGHT_DECAY")
+    [ -n "$GRAD_CLIP_LIMIT" ] && CONFIGS+=(--clip-limit "$GRAD_CLIP_LIMIT")
     [ -n "$MOMENTUM" ] && CONFIGS+=(--momentum "$MOMENTUM")
     [ -n "$SEED" ] && CONFIGS+=(--seed "$SEED")
     [ -n "$TEST_VERSION" ] && CONFIGS+=(--test-version "$TEST_VERSION")
