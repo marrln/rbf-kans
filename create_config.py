@@ -12,6 +12,7 @@ if __name__ == '__main__':
     # Dataset override
     parser.add_argument('--dataset', dest='dataset', type=str, required=True, help=f'Dataset to use (required)')
     parser.add_argument('-d', '--dest-top-directory', dest='dest_top_dir', default=None, help='The directory to be used as a top directory for training, if None uses dataset-specific default directory.')
+    parser.add_argument('--augment-probability', dest='probability', type=float, default=0.25, help='Probability of applying data augmentation')
     
     # Model architecture flags
     parser.add_argument('--seed', dest='seed', type=int, default=42)
@@ -28,6 +29,7 @@ if __name__ == '__main__':
     parser.add_argument('--no-normalize-rbf', dest='normalize_rbf', action='store_false', default=True, help='Disable RBF output normalization')
     parser.add_argument('--dropout', dest='dropout', type=float, default=0.5)
     parser.add_argument('--dropout-linear', dest='dropout_linear', type=float, default=None, help='Dropout after linear layer (default: same as --dropout)')
+    parser.add_argument('--dynamic-dropout', dest='dynamic_dropout', action='store_true', default=False, help='Use dynamic dropout scheduling (default: False)')
     parser.add_argument('--with-logits', dest='with_logits', action='store_true', help='Use logits output (no final activation) and corresponding loss')
     
     # Training hyperparameters
@@ -38,6 +40,7 @@ if __name__ == '__main__':
     parser.add_argument('--optimizer', dest='optimizer', type=str, default='Adam')
     parser.add_argument('--weight-decay', dest='weight_decay', type=float, default=1e-4)
     parser.add_argument('--momentum', dest='momentum', type=float, default=0.9)
+    parser.add_argument('--clip-limit', dest='clip_limit', type=float, default=1.0, help='Gradient clipping limit (default: 1.0)')
     parser.add_argument('--lr-factor', dest='lr_factor', type=float, default=0.5)
     parser.add_argument('--lr-patience', dest='lr_patience', type=int, default=8)
     parser.add_argument('--resize', dest='resize', type=int, nargs=2, metavar=('H', 'W'), help="Resize images to HxW (e.g., --resize 16 16)")
@@ -124,8 +127,8 @@ if __name__ == '__main__':
         use_v2            = args.use_v2,
         normalize         = args.normalize,
         normalize_rbf     = args.normalize_rbf,
-        dropout_rate      = object_to_config(UpdatableFloat, 0),
-        dropout_linear    = args.dropout_linear if args.dropout_linear is not None else args.dropout,
+        dropout_rate      = object_to_config(UpdatableFloat, args.dropout) if args.dynamic_dropout else args.dropout,
+        dropout_linear    = args.dropout_linear,
     )
     
     if final_act != torch.nn.Identity:
@@ -215,14 +218,14 @@ if __name__ == '__main__':
         }
     
     # Hyperparameters
-    train_config['epochs'] = args.epochs
-    train_config['patience'] = args.patience
-    train_config['lr'] = args.lr
-    train_config['seed'] = args.seed
-    train_config['batch_size'] = args.batch_size
-    train_config['probability'] = 0.25
-    if args.resize is not None:
-        train_config['resize'] = tuple(args.resize)
+    train_config['epochs']      = args.epochs
+    train_config['patience']    = args.patience
+    train_config['lr']          = args.lr
+    train_config['seed']        = args.seed
+    train_config['batch_size']  = args.batch_size
+    train_config['probability'] = args.probability
+    train_config['clip_limit']  = args.clip_limit
+    train_config['resize']      = tuple(args.resize) if args.resize is not None else None
     
     # Optimizer
     train_config.update(
@@ -265,21 +268,24 @@ if __name__ == '__main__':
         ),
     })
     
-    # Dropout schedule – **removed unsqueeze callbacks** (caused CrossEntropyLoss error)
-    train_config['callbacks']['train_iter_start'].extend([
-        object_to_config(
-            f'lambda *args, model=None, iteration=0, epoch=0, epochs=1, dataloader=None, **kwargs : model._modules["kan"].dropout_rate.set('
-            f'{args.dropout} * torch.sigmoid( torch.tensor( ((epoch + (iteration / len(dataloader)) - {int(args.epochs) / 2}) / {int(args.epochs) / 4}) )).item()'
-            ')',
-        ),
-        # Removed: object_to_config('lambda *args, target=None, _f=apply_to_tensor, **kwargs: _f(target, "unsqueeze_", -1)'),
-        object_to_config('lambda *args, train_gatherer=None, **kwargs: train_gatherer(*args,**kwargs)'),
-    ])
+    # Dropout schedule
+    if args.dynamic_dropout:
+        train_config['callbacks']['train_iter_start'].extend([
+            object_to_config(
+                f'lambda *args, model=None, iteration=0, epoch=0, epochs=1, dataloader=None, **kwargs : model._modules["kan"].dropout_rate.set('
+                f'{args.dropout} * torch.sigmoid( torch.tensor( ((epoch + (iteration / len(dataloader)) - {int(args.epochs) / 2}) / {int(args.epochs) / 4}) )).item()'
+                ')',
+            ),
+            object_to_config('lambda *args, train_gatherer=None, **kwargs: train_gatherer(*args,**kwargs)'),
+        ])
+    else:
+        train_config['callbacks']['train_iter_start'].extend([
+            object_to_config('lambda *args, train_gatherer=None, **kwargs: train_gatherer(*args,**kwargs)'),
+        ])
     train_config['callbacks']['train_end'].extend([
         object_to_config('lambda *args, train_gatherer=None, **kwargs: train_gatherer.finalize(*args,**kwargs)'),
     ])
     train_config['callbacks']['eval_iter_start'].extend([
-        # Removed: object_to_config('lambda *args, target=None, _f=apply_to_tensor, **kwargs: _f(target, "unsqueeze_", -1)'),
         object_to_config('lambda *args, val_gatherer=None, **kwargs: val_gatherer(*args,**kwargs)'),
     ])
     train_config['callbacks']['eval_metrics_start'].extend([
