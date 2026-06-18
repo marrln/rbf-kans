@@ -301,54 +301,39 @@ if __name__ == '__main__':
         ),
     })
     
-    # Dropout schedule
+    cbs = train_config['callbacks']
     if args.dynamic_dropout:
-        train_config['callbacks']['train_iter_start'].extend([
-            object_to_config(
-                f'lambda *args, model=None, iteration=0, epoch=0, epochs=1, dataloader=None, **kwargs : model._modules["kan"].dropout_rate.set('
-                f'{args.dropout} * torch.sigmoid( torch.tensor( ((epoch + (iteration / len(dataloader)) - {int(args.epochs) / 2}) / {int(args.epochs) / 4}) )).item()'
-                ')',
-            ),
-            object_to_config('lambda *args, train_gatherer=None, **kwargs: train_gatherer(*args,**kwargs)'),
-        ])
-    else:
-        train_config['callbacks']['train_iter_start'].extend([
-            object_to_config('lambda *args, train_gatherer=None, **kwargs: train_gatherer(*args,**kwargs)'),
-        ])
-    train_config['callbacks']['train_end'].extend([
-        object_to_config('lambda *args, train_gatherer=None, **kwargs: train_gatherer.finalize(*args,**kwargs)'),
-    ])
-    train_config['callbacks']['eval_iter_start'].extend([
-        object_to_config('lambda *args, val_gatherer=None, **kwargs: val_gatherer(*args,**kwargs)'),
-    ])
-    train_config['callbacks']['eval_metrics_start'].extend([
-        object_to_config('lambda *args, val_gatherer=None, **kwargs: val_gatherer.finalize(*args,**kwargs)'),
-    ])
-    
+        mid   = args.epochs / 2          # center of the sigmoid
+        width = args.epochs / 4          # steepness of the transition
+        dropout_lambda = (
+            f"lambda *args, model=None, iteration=0, epoch=0, dataloader=None, **kwargs: "
+            f"model._modules['kan'].dropout_rate.set("
+            f"    {args.dropout} * torch.sigmoid("
+            f"        torch.tensor((epoch + iteration / len(dataloader) - {mid}) / {width})"
+            f"    ).item()"
+            f")"
+        )
+        cbs['train_iter_start'] += [object_to_config(dropout_lambda)]
+
+    cbs['train_iter_start'].append(object_to_config('lambda *args, train_gatherer=None, **kwargs: train_gatherer(*args,**kwargs)'))
+    cbs['train_end'].append(object_to_config('lambda *args, train_gatherer=None, **kwargs: train_gatherer.finalize(*args,**kwargs)'))
+    cbs['eval_iter_start'].append(object_to_config('lambda *args, val_gatherer=None, **kwargs: val_gatherer(*args,**kwargs)'))
+    cbs['eval_metrics_start'].append(object_to_config('lambda *args, val_gatherer=None, **kwargs: val_gatherer.finalize(*args,**kwargs)'))
+
     # Helper to build hash and directory
     def build_test_dir(train_config, model_config, top_dir=None, test_version=None):
-
-        exclude_keys = {'callbacks', 'callbacks_arguments', 'epochs'}
-
-        def filter_items(d):
-            return [(k, v) for k, v in d.items()
-                    if k not in exclude_keys and not callable(v)]
-
-        items = filter_items(train_config) + filter_items(model_config)
-        items.sort(key=lambda x: x[0])
-        data = '_'.join(f"{key}={val}" for key, val in items)
-
-        hashed_dir_name = hashlib.sha1(data.encode()).hexdigest()
-
-        if top_dir is not None:
-            pdir = os.path.join(top_dir, hashed_dir_name)
-        else:
-            pdir = hashed_dir_name
-
-        if test_version is not None:
+        exclude = {'callbacks', 'callbacks_arguments', 'epochs'}
+        items = sorted(
+            [(k, v) for k, v in [*train_config.items(), *model_config.items()]
+            if k not in exclude and not callable(v)],
+            key=lambda x: x[0]
+        )
+        data_str = '_'.join(f"{k}={v}" for k, v in items)
+        hashed = hashlib.sha1(data_str.encode()).hexdigest()
+        pdir = os.path.join(top_dir, hashed) if top_dir else hashed
+        if test_version:
             pdir = os.path.join(pdir, f"test_{test_version}")
-
-        return pdir, hashed_dir_name
+        return pdir, hashed
 
     pdir, hashed = build_test_dir(train_config, model_config, top_dir=args.dest_top_dir, test_version=args.test_version)
 
