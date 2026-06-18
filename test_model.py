@@ -3,6 +3,7 @@
 if __name__ == '__main__':
     import sys, os
     from argparse import ArgumentParser
+    from augmentations import Augmentor
 
     THIS_DIR = os.path.dirname(__file__)
     TOP_DIR = os.path.dirname(THIS_DIR)
@@ -108,19 +109,16 @@ if __name__ == '__main__':
     # Get test dataset
     data, labels = get_dataset('test')
     
-    preprocess_data = A.Compose([
-        *([] if train_config['resize'] == 'None' else [A.Resize(*train_config['resize'])]),
-        A.Normalize(normalization='min_max_per_channel'),
-        A.ToTensorV2(),
-    ], seed=train_config['seed'])
-    
+    # Instantiate the augmentor
+    augmentor = Augmentor(train_config)
+     
     test_dataset = GenericDataset(
         data                    = data, 
         labels                  = labels,
         task                    = train_config['task'],
         return_key              = True,
         return_weights          = train_config['sample_weight'],
-        preprocess_data         = lambda x: preprocess_data(image=x)["image"],
+        preprocess_data         = augmentor.test,
         preprocess_targ         = None,
         flatten                 = model_config['flatten'],
     )

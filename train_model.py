@@ -3,7 +3,8 @@
 if __name__ == '__main__':
     import sys, os
     from argparse import ArgumentParser
-
+    from augmentations import Augmentor
+    
     THIS_DIR = os.path.dirname(__file__)
     TOP_DIR = os.path.dirname(THIS_DIR)
     sys.path.append(TOP_DIR)
@@ -99,22 +100,8 @@ if __name__ == '__main__':
 
     build_dataset() # Build dataset if not already built
     
-    # BUG: we apply data augmentation on the CPU plus on the validation set    
-    preprocess_data = A.Compose([
-            # NOTE: Here you can edit the data augmentation pipeline as needed
-            A.HorizontalFlip(p=train_config['probability']),
-            A.VerticalFlip(p=train_config['probability']),
-            A.SafeRotate(limit=(-90, 90), p=train_config['probability']),
-            *([] if train_config['resize'] == 'None' else [A.Resize(*train_config['resize'])]),
-            
-            # A.ShiftScaleRotate(scale_limit=(-0.2, 0), rotate_limit=(-90, 90), p=train_config['probability']),
-            # A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1, p=train_config['probability']),
-            
-            A.Normalize(normalization='min_max_per_channel'),
-            A.ToTensorV2(),
-        ],
-        seed=train_config['seed'],
-    )
+    # Instantiate the augmentor
+    augmentor = Augmentor(train_config)
     
     data, labels = get_dataset('train_val')
     # Create iterable train and val datasets
@@ -131,7 +118,7 @@ if __name__ == '__main__':
         task            = train_config['task'],
         return_key      = False,
         return_weights  = train_config['sample_weight'],
-        preprocess_data = lambda x: preprocess_data(image=x)["image"],
+        preprocess_data = augmentor.train,
         preprocess_targ = None,
         flatten         = model_config['flatten'],
     )
@@ -142,7 +129,7 @@ if __name__ == '__main__':
         task            = train_config['task'],
         return_key      = False,
         return_weights  = train_config['sample_weight'],
-        preprocess_data = lambda x: preprocess_data(image=x)["image"],
+        preprocess_data = augmentor.val,
         preprocess_targ = None,
         flatten         = model_config['flatten'],
     )
