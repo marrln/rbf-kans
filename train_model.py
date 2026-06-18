@@ -92,13 +92,7 @@ if __name__ == '__main__':
 
     # Instantiate evaluation criteria
     eval_criteria = weak_instantiate_all(train_config['eval_criteria'])
-    print('-- Evaluation Criteria :')
-    if len(eval_criteria):
-        for key, val in eval_criteria.items():
-            print('  --', key, ':', val)
-    else:
-        print('  No evaluation criteria specified.')
-        
+
     # Instantiate callbacks
     callbacks = weak_instantiate_all(train_config['callbacks'])
     callbacks_arguments = weak_instantiate_all(train_config['callbacks_arguments'])
