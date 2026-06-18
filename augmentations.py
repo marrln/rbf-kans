@@ -3,25 +3,11 @@ from typing import List, Dict, Any
 import torch
 
 class Augmentor:
-    """
-    Handles all data transformations for training, validation and test.
-    """
     def __init__(self, config: Dict[str, Any]):
-        """
-        Args:
-            config: Training configuration dict. Expects keys:
-                - 'probability': float for random augmentations
-                - 'resize': tuple (H, W) or 'None'
-                - 'seed': int for reproducibility
-        """
         self.config = config
         self._build_transforms()
 
     def _build_common(self) -> List[A.BasicTransform]:
-        """
-        Deterministic preprocessing shared across all pipelines.
-        These do NOT introduce randomness.
-        """
         transforms = []
         resize = self.config.get('resize')
         if resize is not None and resize != 'None':
@@ -31,39 +17,62 @@ class Augmentor:
         return transforms
 
     def _build_transforms(self) -> None:
-        # --- Training pipeline (with random augmentations) ---
         train_common = self._build_common()
-        self.train_transform = A.Compose([
-            A.HorizontalFlip(p=self.config['probability']),
-            A.VerticalFlip(p=self.config['probability']),
-            A.SafeRotate(limit=(-90, 90), p=self.config['probability']),
-            # Add more augmentations here if needed, e.g.:
-            # A.ColorJitter(brightness=0.2, contrast=0.2, p=self.config['probability']),
-            *train_common
-        ], seed=self.config['seed'])
+        dataset = self.config.get('dataset', '').lower()
 
-        # --- Validation pipeline (deterministic only) ---
+        # --- MNIST: safe geometric transformations ---
+        if dataset == 'mnist':
+            self.train_transform = A.Compose([
+                A.ShiftScaleRotate(
+                    shift_limit=0.1,
+                    scale_limit=0.1,
+                    rotate_limit=15,
+                    p=self.config['probability']
+                ),
+                # Better parameters for small images (28x28)
+                A.ElasticTransform(
+                    alpha=1.0,        # Deformation intensity
+                    sigma=4,          # Smoothness (small = local warps)
+                    alpha_affine=5,   # Affine deformation strength
+                    p=self.config['probability']
+                ),
+                *train_common
+            ], seed=self.config['seed'])
+
+        # --- CIFAR: standard augmentations ---
+        elif dataset in ('cifar10', 'cifar100'):
+            self.train_transform = A.Compose([
+                # Always apply a random crop (with optional padding)
+                A.PadIfNeeded(min_height=36, min_width=36, border_mode=0, always_apply=True),
+                A.RandomCrop(height=32, width=32, always_apply=True),
+                A.HorizontalFlip(p=self.config['probability']),
+                A.ColorJitter(
+                    brightness=0.2,
+                    contrast=0.2,
+                    saturation=0.2,
+                    hue=0.1,
+                    p=self.config['probability']
+                ),
+                *train_common
+            ], seed=self.config['seed'])
+
+        # --- Fallback: no random augmentations ---
+        else:
+            self.train_transform = A.Compose(
+                train_common,
+                seed=self.config['seed']
+            )
+
+        # --- Validation & Test (deterministic) ---
         val_common = self._build_common()
-        self.val_transform = A.Compose(
-            val_common,
-            seed=self.config['seed']
-        )
+        self.val_transform = A.Compose(val_common, seed=self.config['seed'])
+        self.test_transform = A.Compose(val_common, seed=self.config['seed'])  # same as val
 
-        # --- Base transform for TTA (same as validation) ---
-        self._base_tta_transform = A.Compose(
-            val_common,
-            seed=self.config['seed']
-        )
-
-    # Public methods for dataset preprocessing
     def train(self, image) -> torch.Tensor:
-        """Apply training augmentations + preprocessing."""
         return self.train_transform(image=image)['image']
 
     def val(self, image) -> torch.Tensor:
-        """Apply validation preprocessing (no augmentations)."""
         return self.val_transform(image=image)['image']
 
     def test(self, image) -> torch.Tensor:
-        """Apply test-time preprocessing (same as validation)."""
-        return self._base_tta_transform(image=image)['image']
+        return self.test_transform(image=image)['image']
