@@ -51,10 +51,13 @@ def train(
     os.makedirs(top_dirname, exist_ok=True)
     model_dirname = os.path.join(top_dirname, 'models')
     os.makedirs(model_dirname, exist_ok=True)
-
     checkpoint_path = os.path.join(model_dirname, 'last.pt')
-    resumed = False
+    
+    model.to(device)
+    if hasattr(criterion, 'to'):
+        criterion.to(device)
 
+    resumed = False
     if resume_training and os.path.exists(checkpoint_path):
         print(f"Resuming training from {checkpoint_path}")
         checkpoint = load_checkpoint(
@@ -79,11 +82,6 @@ def train(
     best_epoch = start_epoch - 1 if resumed else start_epoch
     patience_counter = 0
     val_loss = float('inf')
-
-    # Move model to device once
-    model.to(device)
-    if hasattr(criterion, 'to'):
-        criterion.to(device)
 
     # Check if criterion accepts a 'weight' argument (for sample_weight)
     criterion_signature = inspect.signature(criterion)
