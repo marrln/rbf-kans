@@ -3,7 +3,7 @@
 if __name__ == '__main__':
     import sys, os
     from argparse import ArgumentParser
-    from augmentations import Augmentor
+    from augmentations import Augmentor # pyright: ignore[reportMissingImports]
 
     THIS_DIR = os.path.dirname(__file__)
     TOP_DIR = os.path.dirname(THIS_DIR)
