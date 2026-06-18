@@ -157,10 +157,7 @@ def save_checkpoint(
         'history': history,
     }
     if rng_state is not None:
-        # Ensure rng_state is a ByteTensor for serialization
-        if not isinstance(rng_state, torch.ByteTensor):
-            rng_state = torch.tensor(rng_state, dtype=torch.uint8)
-        checkpoint['rng_state'] = rng_state
+        rng_state = rng_state.detach().clone().to(dtype=torch.uint8, device='cpu')
     torch.save(checkpoint, filepath)
 
 
