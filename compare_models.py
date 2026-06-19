@@ -94,9 +94,17 @@ if __name__ == '__main__' :
     test_root = args.test_dir
     # Walk directories and look for the best checkpoint
     for root, dirs, files in os.walk(test_root):
-        x = os.path.relpath(root, test_root)
-        if len(x.split(os.sep)) == 2 and os.path.isfile(os.path.join(root, 'models', 'best.pt')):
-            tests.append(x.split(os.sep))
+        # Check if this directory is a 'models' folder containing best.pt
+        if os.path.basename(root) == 'models' and 'best.pt' in files:
+            # Parent directory is test_root/<hash>/<version>
+            parent_rel = os.path.relpath(os.path.dirname(root), test_root)
+            parts = parent_rel.split(os.sep)
+            if len(parts) >= 2:
+                # Use the last two components as Configuration and Version
+                tests.append([parts[-2], parts[-1]])
+            elif len(parts) == 1:
+                # If only one level (e.g., hash/version?), treat as hash and default version
+                tests.append([parts[0], 'default'])
     
     tests = pd.DataFrame(data=tests, columns=['Configuration','Version']).sort_values(['Configuration','Version']).reset_index(drop=True)
     
@@ -190,11 +198,11 @@ if __name__ == '__main__' :
             except Exception as e:
                 print(f'Warning: Could not parse model config for "{config_dir}": {e}')
         
-        # ----- Load and parse train config (training hyperparams) -----        # ----- Load and parse train config (training hyperparams) -----
+        # ----- Load and parse train config (training hyperparams) -----  
         if os.path.exists(train_config_path):
             train_config = load_dict(train_config_path.replace('.json', ''))
             # use_logits
-            tests.loc[idx, 'use_logits'] = 'Yes' if 'BCEWithLogitsLoss' in str(train_config) else 'No'
+            tests.loc[idx, 'use_logits'] = 'Yes' if 'BCEWithLogitsLoss' in str(train_config) else 'No' # This is wrong!!!!!!!!!!!!!!!!!!
             
             # Extract optimizer info
             opt = train_config.get('optimizer')
@@ -342,7 +350,7 @@ if __name__ == '__main__' :
     print(f"TOP 5 MODELS BY METRIC - {DATASET_NAME.upper()}")
     print("="*80)
     
-    key_metrics = ['Accuracy', 'F1Score', 'AUROC']
+    key_metrics = ['Accuracy', 'F1Score', 'AUROC', 'Top3Accuracy', 'Top5Accuracy']
     for metric in key_metrics:
         if metric in tests.columns:
             print(f"\n{'='*80}")
