@@ -69,10 +69,16 @@ if __name__ == '__main__':
     import matplotlib.pyplot as plt
     
     from rbfkan_utils.utils import load_checkpoint
-    from rbfkan_utils.utils.plotter import plot_confusion_matrix
+    from rbfkan_utils.utils.plotter import (
+        plot_confusion_matrix,
+        plot_loss_curves,
+        plot_metric_curves,
+        plot_test_metrics_bar,
+        plot_lr_schedule
+    )
     from rbfkan_utils.config import *
 
-    # Check configuration file validity
+    # Load configurations
     train_config = load_config(args.train_config, locals=get_locals())
     model_config = load_config(args.model_config, locals=get_locals())
 
@@ -90,8 +96,7 @@ if __name__ == '__main__':
     checkpoint = load_checkpoint(checkpoint_path, load_rng=False)
     history = checkpoint['history']   # contains 'train' and 'val' keys
 
-    # The script expects history['test'][args.epoch]. 
-    # If 'test' key is missing, fall back to validation metrics (with a warning)
+    # Extract test metrics (or fallback to validation if missing)
     if 'test' not in history:
         print("Warning: No 'test' key found in history. Using validation metrics instead.")
         if args.epoch == 'best':
@@ -111,7 +116,6 @@ if __name__ == '__main__':
             else:
                 raise KeyError(f"Epoch {args.epoch} not found in validation history. Available epochs: {sorted(history['val'].keys())}")
     else:
-        # Original behaviour: get test metrics for the requested epoch
         test = history['test'].get(args.epoch, None)
         if test is None:
             raise KeyError(f"Epoch '{args.epoch}' not found in test history. Available: {list(history['test'].keys())}")
@@ -120,34 +124,26 @@ if __name__ == '__main__':
     # Print basic statistics
     print(f'Loss for epoch "{args.epoch}": {test_metrics["loss"]}')
     
-    for key in ['Accuracy', 'F1Score', 'Precision', 'Recall', 'MSE', 'MAE', 'AUROC']:
-        if key in test_metrics.keys():
-            print(f'{key} for epoch "{args.epoch}": {test_metrics[key]}')
+    for key in test_metrics:
+        print(f'{key} for epoch "{args.epoch}": {test_metrics[key]}')
 
-    # Extract result statistics
+    # Create plots directory
     plots_path = os.path.join(args.test_dir, 'plot')
     os.makedirs(plots_path, exist_ok=True)
 
-    # Training vs Validation Loss
+    # ---------- PLOT 1: Training vs Validation Loss ----------
     epochs = np.asarray(list(history['train'].keys()), dtype=int)
     tr_loss = np.array([history['train'][ep]['loss'] for ep in epochs])
     val_loss = np.array([history['val'][ep]['loss'] for ep in epochs])
 
-    plt.plot(epochs, tr_loss, val_loss)
-    if tr_loss.max()/tr_loss.min() > 10 or val_loss.max()/val_loss.min() > 10:
-        plt.yscale('log')
+    loss_title = f'Training vs Validation Loss - {DATASET_NAME.upper()}'
+    loss_save = os.path.join(plots_path, 'tr_vs_val.png')
+    plot_loss_curves(epochs, tr_loss, val_loss,
+                     title=loss_title, save_path=loss_save,
+                     log_scale_auto=False)
+    print(f"Training vs Validation diagram saved to: {loss_save}")
 
-    plt.title(f'Training vs Validation Loss - {DATASET_NAME.upper()}')
-    plt.legend(['training','validation'])
-    plt.xlabel('Epochs')
-    plt.ylabel('Loss')
-
-    save_path = os.path.join(plots_path, 'tr_vs_val.png')
-    plt.savefig(save_path)
-    plt.close('all')
-    print(f"Training vs Validation diagram saved to: {save_path}")
-
-    # Extract learning rates from training history (key 'lr' stored per epoch)
+    # ---------- PLOT 2: Learning Rate Schedule ----------
     lr_values = []
     for ep in epochs:
         lr = history['train'][ep].get('lr', None)
@@ -156,29 +152,58 @@ if __name__ == '__main__':
             lr_values.append(np.nan)
         else:
             lr_values.append(lr)
-    
-    # Filter out epochs where lr is missing (if any)
     mask = ~np.isnan(lr_values)
     if np.any(mask):
-        plt.figure()
-        plt.plot(epochs[mask], np.array(lr_values)[mask], marker='.', linestyle='-', color='green')
-        plt.title(f'Learning Rate Schedule - {DATASET_NAME.upper()}')
-        plt.xlabel('Epoch')
-        plt.ylabel('Learning Rate')
-        plt.yscale('log')  # LR typically changes on log scale
-        plt.grid(True, which='both', linestyle='--', alpha=0.5)
-        save_path_lr = os.path.join(plots_path, 'lr_schedule.png')
-        plt.savefig(save_path_lr)
-        plt.close('all')
-        print(f"Learning rate schedule saved to: {save_path_lr}")
+        lr_save = os.path.join(plots_path, 'lr_schedule.png')
+        plot_lr_schedule(epochs[mask], np.array(lr_values)[mask],
+                         title=f'Learning Rate Schedule - {DATASET_NAME.upper()}',
+                         save_path=lr_save)
+        print(f"Learning rate schedule saved to: {lr_save}")
     else:
-        print("No learning rate data found in history; skipping LR plot.")
-    
-    if 'PrecisionRecallCurve' in test_metrics.keys():
+        print("No learning rate data found; skipping LR plot.")
+
+    # ---------- PLOT 3: Per‑metric curves over epochs ----------
+    # Common metric names to look for in train/val histories
+    common_metrics = ['Accuracy', 'F1Score', 'Precision', 'Recall', 'MSE', 'MAE', 'AUROC']
+    # Also include any other scalar metric found in test_metrics
+    all_possible = set(common_metrics) | set(test_metrics.keys()) # exclude loss since it's already plotted
+    all_possible.discard('loss')  # loss already plotted
+    # Filter to metrics that exist in both train and val histories
+    for metric in all_possible:
+        # Check if metric is present in train and val for at least one epoch
+        if (metric in history['train'].get(epochs[0], {}) and
+                metric in history['val'].get(epochs[0], {})):
+            # Extract values for all epochs
+            tr_vals = np.array([history['train'][ep].get(metric, np.nan) for ep in epochs])
+            val_vals = np.array([history['val'][ep].get(metric, np.nan) for ep in epochs])
+            # Remove epochs where either is missing
+            valid = ~(np.isnan(tr_vals) | np.isnan(val_vals))
+            if np.sum(valid) > 1:  # need at least two points
+                metric_save = os.path.join(plots_path, f'{metric}_curve.png')
+                # Choose a colour from a palette
+                colors = ['blue', 'green', 'red', 'orange', 'purple', 'brown', 'pink']
+                color = colors[list(all_possible).index(metric) % len(colors)]
+                plot_metric_curves(epochs[valid], tr_vals[valid], val_vals[valid],
+                                   metric_name=metric,
+                                   color=color,
+                                   title=f'{metric} - {DATASET_NAME.upper()}',
+                                   save_path=metric_save)
+                print(f"{metric} curve saved to: {metric_save}")
+
+    # ---------- PLOT 4: Bar chart of test metrics ----------
+    test_bar_save = os.path.join(plots_path, 'test_metrics_bar.png')
+    # Exclude non-scalar entries automatically handled inside function
+    plot_test_metrics_bar(test_metrics,
+                          color='skyblue',
+                          title=f'Test Set Metrics - {DATASET_NAME.upper()} (Epoch {args.epoch})',
+                          save_path=test_bar_save)
+    print(f"Test metrics bar chart saved to: {test_bar_save}")
+
+    # ---------- PLOT 5: Precision‑Recall Curve (if available) ----------
+    if 'PrecisionRecallCurve' in test_metrics:
         import torch
-        import torchmetrics
-        from rbfkan_utils.config import *
-        
+        from rbfkan_utils.config import instantiate
+
         pr_curve = instantiate(train_config['eval_criteria'], 'PrecisionRecallCurve')
         
         plt_args = [torch.tensor(_).float() for _ in test_metrics['PrecisionRecallCurve']]
@@ -188,14 +213,13 @@ if __name__ == '__main__':
         plt.savefig(save_path)
         plt.close('all')
         print(f"Precision-Recall Curve saved to: {save_path}")
-        
-    # Read ground truth and predicted values
+
+    # ---------- PLOT 6: Confusion Matrices & Regression plots ----------
     rslt_path = os.path.join(args.test_dir, 'rslt')
 
     gt_df = pd.read_csv(os.path.join(rslt_path, 'ground_truth.csv'), index_col='Index')
     pr_df = pd.read_csv(os.path.join(rslt_path, f'{args.epoch}.csv'), index_col='Index')
 
-    # Read Categories - Works for both CIFAR-10 and CIFAR-100
     categories = create_labels(save=False)
     os.makedirs(os.path.join(plots_path, args.epoch), exist_ok=True)
 
@@ -203,9 +227,6 @@ if __name__ == '__main__':
     categorical_cols = []
     for category, types in categories.items():
         class_names = list(types.keys())
-        
-        # Find columns of the specified category
-        # For CIFAR datasets, columns use "Label" as prefix
         search_prefix = "Label"
         gt_cols = [col for col in gt_df.columns if col == search_prefix or col.startswith(f'{search_prefix}_Is_')]
         pr_cols = [col for col in pr_df.columns if col == search_prefix or col.startswith(f'{search_prefix}_Is_')]
@@ -221,11 +242,7 @@ if __name__ == '__main__':
             idx_to_class = {val: key for key, val in types.items()}
             gt_type = gt_slice[gt_cols[0]].map(idx_to_class)
         else:
-            # Multiple one-hot encoded columns
-            # Fix DataFrames
-            gt_slice.columns = [col[col.find('_Is_')+4:] for col in gt_slice.columns]
-            
-            # Find probabilities of the unknown class
+            gt_slice.columns = [col[col.find('_Is_') + 4:] for col in gt_slice.columns]
             if train_config['task'] == 'multiclass':
                 gt_type = gt_slice.aggregate('argmax', axis=1).map(dict(enumerate(gt_slice.columns)))
             else:
@@ -247,12 +264,13 @@ if __name__ == '__main__':
                 pr_type = pr_slice
                 
         cm = confusion_matrix(gt_type.values, pr_type.values, labels=class_names)
+        print(f"Confusion matrix \n{cm}")
+        
         save_path = os.path.join(plots_path, args.epoch, f'cm_{category}.png')
         plot_confusion_matrix(
             cm, 
             class_names, 
-            normalize = True, 
-            figsize   = (0.5*len(pr_slice.columns), 0.5*len(pr_slice.columns)+2),
+            normalize = False, 
             title     = f'Confusion Matrix : {category} - {DATASET_NAME.upper()}',
             save_path = save_path
         )
@@ -265,7 +283,7 @@ if __name__ == '__main__':
         plt.plot(idx, gt_df[col], pr_df[col])
 
         plt.title(f'{col} - {DATASET_NAME.upper()}')
-        plt.legend(['Ground Truth','Prediction'])
+        plt.legend(['Ground Truth', 'Prediction'])
         plt.xlabel('Index')
         plt.ylabel(col)
 
