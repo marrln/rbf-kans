@@ -5,41 +5,47 @@
 ########################################
 
 WITH_LOGITS=(1)
-TEST_VERSIONS=("normalized")
+TEST_VERSIONS=("20")
 SEEDS=(42)
 
-LAYERS_LIST=("32 64 32" "128 64 32" "8 16")        # multi‑layer hidden sizes
-NUM_GRIDS_LIST=("4 6" "8 12")                      # per‑layer grids
-GRID_MIN_LIST=("-3 -1.5" "-2 -1")
-GRID_MAX_LIST=("2 1.5" "3 2")
-SCALE_LIST=("8 0.5" "10 1")
-MODES=('RSWAFF')
+LAYERS_LIST=("64" "256" "512")        # multi‑layer hidden sizes
+NUM_GRIDS_LIST=("16")                      # per‑layer grids
+GRID_MIN_LIST=("-3.0" "-1.5")
+GRID_MAX_LIST=("1.5" "3.0")
+SCALE_LIST=("2")
+MODES=('RSWAFF' 'PReLU')
 RESIDUALS=(0)
-DYNAMICS=(0)
+DYNAMICS=(0 1)
 USE_V2S=(0)
-NO_NORMALIZES=(1)
+NO_NORMALIZES=(0)
 NO_NORMALIZE_RBFS=(0)
-DROPOUTS=(0.15)
-DROPOUT_LINEAR_LIST=(0.1)
-
-EPOCHS_LIST=(100)
-PATIENCE_LIST=(50)
-BATCH_SIZES=(16384)
-LEARNING_RATES=(5e-2)
+DROPOUTS=(0.3)
+DROPOUT_LINEAR_LIST=(0.3)
+EPOCHS_LIST=(1000)
+PATIENCE_LIST=(80)
+BATCH_SIZES=(128)
+LEARNING_RATES=(1e-5 1e-4)
 LR_FACTORS=(0.5)
-LR_PATIENCE_LIST=(8)
+LR_PATIENCE_LIST=(25)
 OPTIMIZERS=("AdamW")
-WEIGHT_DECAYS=(1e-4)
+WEIGHT_DECAYS=(1e-2 1e-3)
 MOMENTUMS=("0.9")
+
+# ----- NEW PARAMETERS -----
+RESIZE_LIST=("")                     # empty means no resize
+AUGMENT_PROB_LIST=(0.45)
+DYNAMIC_DROPOUT_LIST=(0)             # 0 = off, 1 = on
+GRAD_CLIP_LIST=(1.0)                 # gradient clip limit
+# -------------------------
 
 ########################################
 # Runtime Configuration
 ########################################
-MAX_PARALLEL_JOBS=1
-DATASET="cifar100"
+MAX_PARALLEL_JOBS=2
+DATASET="mnist"
 PYTHON=python
 THIS_DIR=$(dirname "$(realpath "$0")")
-RESULTS_DIR="$THIS_DIR/train/sweep_results"
+RESULTS_DIR="$THIS_DIR/$DATASET/train/sweep_results"
 
 ########################################
 ########################################
@@ -54,39 +60,55 @@ generate_combinations() {
     python3 -c '
 import itertools, sys
 
-# List of arrays – each array element can be a string with spaces
+# If an argument is empty, it represents a single empty element in the product.
+# If it has spaces, split it into multiple elements.
+def parse_arg(s):
+    return s.split() if s.strip() != "" else [""]
+
+# Exactly 29 arguments, in the exact order of your arrays
 arrays = [
-    '"${WITH_LOGITS[@]@Q}"',
-    '"${TEST_VERSIONS[@]@Q}"',
-    '"${SEEDS[@]@Q}"',
-    '"${LAYERS_LIST[@]@Q}"',
-    '"${NUM_GRIDS_LIST[@]@Q}"',
-    '"${GRID_MIN_LIST[@]@Q}"',
-    '"${GRID_MAX_LIST[@]@Q}"',
-    '"${SCALE_LIST[@]@Q}"',
-    '"${MODES[@]@Q}"',
-    '"${RESIDUALS[@]@Q}"',
-    '"${DYNAMICS[@]@Q}"',
-    '"${USE_V2S[@]@Q}"',
-    '"${NO_NORMALIZES[@]@Q}"',
-    '"${NO_NORMALIZE_RBFS[@]@Q}"',
-    '"${DROPOUTS[@]@Q}"',
-    '"${DROPOUT_LINEAR_LIST[@]@Q}"',
-    '"${EPOCHS_LIST[@]@Q}"',
-    '"${PATIENCE_LIST[@]@Q}"',
-    '"${BATCH_SIZES[@]@Q}"',
-    '"${LEARNING_RATES[@]@Q}"',
-    '"${LR_FACTORS[@]@Q}"',
-    '"${LR_PATIENCE_LIST[@]@Q}"',
-    '"${OPTIMIZERS[@]@Q}"',
-    '"${WEIGHT_DECAYS[@]@Q}"',
-    '"${MOMENTUMS[@]@Q}"',
+    parse_arg(sys.argv[1]), parse_arg(sys.argv[2]),  # WITH_LOGITS, TEST_VERSIONS
+    parse_arg(sys.argv[3]),                          # SEEDS
+    parse_arg(sys.argv[4]),                          # LAYERS_LIST
+    parse_arg(sys.argv[5]),                          # NUM_GRIDS_LIST
+    parse_arg(sys.argv[6]), parse_arg(sys.argv[7]),  # GRID_MIN, GRID_MAX
+    parse_arg(sys.argv[8]),                          # SCALE_LIST
+    parse_arg(sys.argv[9]),                          # MODES
+    parse_arg(sys.argv[10]),                         # RESIDUALS
+    parse_arg(sys.argv[11]),                         # DYNAMICS
+    parse_arg(sys.argv[12]),                         # USE_V2S
+    parse_arg(sys.argv[13]),                         # NO_NORMALIZES
+    parse_arg(sys.argv[14]),                         # NO_NORMALIZE_RBFS
+    parse_arg(sys.argv[15]),                         # DROPOUTS
+    parse_arg(sys.argv[16]),                         # DROPOUT_LINEAR_LIST
+    parse_arg(sys.argv[17]),                         # EPOCHS_LIST
+    parse_arg(sys.argv[18]),                         # PATIENCE_LIST
+    parse_arg(sys.argv[19]),                         # BATCH_SIZES
+    parse_arg(sys.argv[20]),                         # LEARNING_RATES
+    parse_arg(sys.argv[21]),                         # LR_FACTORS
+    parse_arg(sys.argv[22]),                         # LR_PATIENCE_LIST
+    parse_arg(sys.argv[23]),                         # OPTIMIZERS
+    parse_arg(sys.argv[24]),                         # WEIGHT_DECAYS
+    parse_arg(sys.argv[25]),                         # MOMENTUMS
+    parse_arg(sys.argv[26]),                         # RESIZE_LIST
+    parse_arg(sys.argv[27]),                         # AUGMENT_PROB_LIST
+    parse_arg(sys.argv[28]),                         # DYNAMIC_DROPOUT_LIST
+    parse_arg(sys.argv[29]),                         # GRAD_CLIP_LIST
 ]
 
 for combo in itertools.product(*arrays):
-    # Use TAB as delimiter to preserve spaces inside fields
     sys.stdout.write("\t".join(combo) + "\n")
-' > /tmp/sweep_combos.txt
+' "${WITH_LOGITS[*]}" "${TEST_VERSIONS[*]}" "${SEEDS[*]}" \
+  "${LAYERS_LIST[*]}" "${NUM_GRIDS_LIST[*]}" "${GRID_MIN_LIST[*]}" \
+  "${GRID_MAX_LIST[*]}" "${SCALE_LIST[*]}" "${MODES[*]}" \
+  "${RESIDUALS[*]}" "${DYNAMICS[*]}" "${USE_V2S[*]}" \
+  "${NO_NORMALIZES[*]}" "${NO_NORMALIZE_RBFS[*]}" "${DROPOUTS[*]}" \
+  "${DROPOUT_LINEAR_LIST[*]}" "${EPOCHS_LIST[*]}" "${PATIENCE_LIST[*]}" \
+  "${BATCH_SIZES[*]}" "${LEARNING_RATES[*]}" "${LR_FACTORS[*]}" \
+  "${LR_PATIENCE_LIST[*]}" "${OPTIMIZERS[*]}" "${WEIGHT_DECAYS[*]}" \
+  "${MOMENTUMS[*]}" "${RESIZE_LIST[*]}" "${AUGMENT_PROB_LIST[*]}" \
+  "${DYNAMIC_DROPOUT_LIST[*]}" "${GRAD_CLIP_LIST[*]}" \
+  > /tmp/sweep_combos.txt
 }
 
 # ------------------------------------------------------------
@@ -165,13 +187,14 @@ while IFS= read -r line; do
 
     # Split line into fields using tab delimiter
     IFS=$'\t' read -r -a fields <<< "$line"
-    # field indices (must match order in product):
+    # field indices (0-24 are old, 25-28 are new):
     # 0: with_logit, 1: test_version, 2: seed, 3: layers, 4: num_grids,
     # 5: grid_min, 6: grid_max, 7: scale, 8: mode, 9: residual,
     # 10: dynamic, 11: use_v2, 12: no_normalize, 13: no_normalize_rbf,
     # 14: dropout, 15: dropout_linear, 16: epochs, 17: patience,
     # 18: batch, 19: lr, 20: lr_factor, 21: lr_patience,
-    # 22: optimizer, 23: weight_decay, 24: momentum
+    # 22: optimizer, 23: weight_decay, 24: momentum,
+    # 25: resize, 26: augment_prob, 27: dynamic_dropout, 28: clip_limit
 
     # Build arguments for create_config.py – quote multi‑token values
     args=""
@@ -200,19 +223,43 @@ while IFS= read -r line; do
     [ -n "${fields[22]}" ] && args="$args --optimizer ${fields[22]}"
     [ -n "${fields[23]}" ] && args="$args --weight-decay ${fields[23]}"
     [ -n "${fields[24]}" ] && args="$args --momentum ${fields[24]}"
+
+    # resize: if non-empty, pass it; otherwise skip
+    # [ -n "${fields[25]}" ] && args="$args --resize \"${fields[25]}\""
+    # augment-probability
+    [ -n "${fields[26]}" ] && args="$args --augment-probability ${fields[26]}"
+    # dynamic-dropout flag
+    [ "${fields[27]}" = "1" ] && args="$args --dynamic-dropout"
+    # clip-limit
+    [ -n "${fields[28]}" ] && args="$args --clip-limit ${fields[28]}"
+    # -------------------------
+
     args="$args --dataset $DATASET"
 
     # Generate configuration hash
     cmd="$PYTHON $THIS_DIR/create_config.py $args --export --hash"
     [ $verbose -eq 1 ] && echo "[EXEC] $cmd"
-    exp_hash=$(eval $cmd)
+    exp_hash=$(eval $cmd 2>&1)
+
+    # If create_config.py failed (exp_hash is empty or contains an error message)
+    if [ -z "$exp_hash" ] || [[ "$exp_hash" =~ "error" ]] || [[ "$exp_hash" =~ "usage:" ]]; then
+        echo "========================================="
+        echo "ERROR: create_config.py failed for experiment $experiment_num"
+        echo "Command: $cmd"
+        echo "Output: $exp_hash"
+        echo "Skipping this experiment."
+        echo "========================================="
+        ((failed++))
+        continue  # Skip to the next combination
+    fi
+
     [ $dryrun -eq 1 ] && exp_hash="dummy_$experiment_num"
 
     # Create hyperparameters.csv (if not dry run)
     if [ $dryrun -eq 0 ]; then
         test_version="${fields[1]}"
         [ -n "$test_version" ] && test_dir_name="test_${test_version}" || test_dir_name="test_0"
-        config_dir="$THIS_DIR/train/${exp_hash}/${test_dir_name}/config"
+        config_dir="$THIS_DIR/$DATASET/train/${exp_hash}/${test_dir_name}/config"
         mkdir -p "$config_dir"
         {
             echo "parameter,value"
@@ -241,6 +288,11 @@ while IFS= read -r line; do
             echo "optimizer,${fields[22]}"
             echo "weight_decay,${fields[23]}"
             echo "momentum,${fields[24]}"
+            # New parameters
+            echo "resize,${fields[25]}"
+            echo "augment_probability,${fields[26]}"
+            echo "dynamic_dropout,${fields[27]}"
+            echo "clip_limit,${fields[28]}"
             echo "experiment_number,$experiment_num"
             echo "config_hash,$exp_hash"
         } > "$config_dir/hyperparameters.csv"
@@ -254,21 +306,43 @@ while IFS= read -r line; do
         local set_test_version=""
         [ -n "$test_version" ] && set_test_version="--test-version $test_version"
         local pbar_flag=""; [ $no_pbar -eq 1 ] && pbar_flag="--no-pbar"
-        local output_dir="$THIS_DIR/train/${exp_hash}/$( [ -n "$test_version" ] && echo "test_${test_version}" || echo "test_0" )"
+        local output_dir="$THIS_DIR/$DATASET/train/${exp_hash}/$( [ -n "$test_version" ] && echo "test_${test_version}" || echo "test_0" )"
         mkdir -p "$output_dir"
 
         echo "[$exp_num/$total_lines] Running $exp_hash"
         {
-            $PYTHON "$THIS_DIR/train_model.py" --hash "$exp_hash" $set_test_version $pbar_flag &&
-            $PYTHON "$THIS_DIR/test_model.py" --hash "$exp_hash" $set_test_version --epoch best $pbar_flag &&
-            $PYTHON "$THIS_DIR/extract_rslt_stats.py" --hash "$exp_hash" $set_test_version --epoch best
+            $PYTHON "$THIS_DIR/train_model.py" \
+                --dataset "$DATASET" \
+                --hash "$exp_hash" \
+                $set_test_version \
+                $pbar_flag &&
+
+            $PYTHON "$THIS_DIR/test_model.py" \
+                --dataset "$DATASET" \
+                --hash "$exp_hash" \
+                $set_test_version \
+                --epoch best \
+                $pbar_flag &&
+
+            $PYTHON "$THIS_DIR/extract_rslt_stats.py" \
+                --dataset "$DATASET" \
+                --hash "$exp_hash" \
+                $set_test_version \
+                --epoch best
+
         } > "$output_dir/terminal_output.txt" 2>&1
 
-        if [ $? -eq 0 ]; then
+        status=$?
+        if [ $status -eq 0 ]; then
             echo "[$(date)] $exp_num SUCCESS" >> "$RESULTS_DIR/sweep_log.txt"
             return 0
         else
             echo "[$(date)] $exp_num FAILED" >> "$RESULTS_DIR/sweep_log.txt"
+
+            echo
+            echo "FAILED: $exp_hash"
+            tail -20 "$output_dir/terminal_output.txt"
+
             return 1
         fi
     }
