@@ -15,6 +15,7 @@ if __name__ == '__main__' :
     parser.add_argument('-l', '--limit', dest='limit', type=int, default=-1, help='Limit the number of characters of the hashes shown in the figures.')
     parser.add_argument('--dataset', dest='dataset', type=str, help=f'Dataset to use (required)', required=True)
     parser.add_argument('--no-pbar', action='store_true', dest='no_pbar', help='Suppress progress bars when running tests.')
+    parser.add_argument('--quiet', action='store_true', dest='quiet', help='Suppress most output (only errors and final summary).')
 
     args = parser.parse_args()
 
@@ -42,7 +43,7 @@ if __name__ == '__main__' :
     # ------------------------------------------------------------------
     # Helper function: run test.py for a given config if needed
     # ------------------------------------------------------------------
-    def run_test_if_needed(config_dir, hash_val, version_folder, dataset, test_root, no_pbar=False):
+    def run_test_if_needed(config_dir, hash_val, version_folder, dataset, test_root, no_pbar=False, quiet=False):
         """
         Check if test metrics exist in checkpoint; if not, call test.py.
         Returns the history dictionary after ensuring test metrics are present.
@@ -55,10 +56,12 @@ if __name__ == '__main__' :
         checkpoint = torch.load(checkpoint_path, map_location='cpu')
         history = checkpoint.get('history', {})
         if 'test' in history and history['test']:
-            print(f"  Test metrics already present for {hash_val}/{version_folder}")
+            if not quiet:
+                print(f"  Test metrics already present for {hash_val}/{version_folder}")
             return history
         
-        print(f"  No test metrics found for {hash_val}/{version_folder} – running test.py...")
+        if not quiet:
+            print(f"  No test metrics found for {hash_val}/{version_folder} – running test.py...")
         
         # Extract the numeric version from the folder name (e.g., "test_0" -> "0")
         if version_folder.startswith('test_'):
@@ -78,6 +81,8 @@ if __name__ == '__main__' :
         ]
         if no_pbar:
             cmd.append('--no-pbar')
+        if quiet:
+            cmd.append('--quiet')  # assume test_model.py supports --quiet (optional)
         
         # Run the test script
         try:
@@ -138,35 +143,44 @@ if __name__ == '__main__' :
                 version_folder=version_folder,
                 dataset=args.dataset,
                 test_root=test_root,
-                no_pbar=args.no_pbar
+                no_pbar=args.no_pbar,
+                quiet=args.quiet
             )
         except Exception as e:
-            print(f'Error processing {config_dir}: {e}')
+            if not args.quiet:
+                print(f'Error processing {config_dir}: {e}')
             tests.drop(idx, axis=0, inplace=True)
             continue
-        
         # ----- Load and parse model config (architecture) -----
         model_config_path = os.path.join(config_dir, 'config', 'model.json')
         train_config_path = os.path.join(config_dir, 'config', 'train.json')
-        
+
         if os.path.exists(model_config_path):
             model_config = load_dict(model_config_path.replace('.json', ''))
-            try:
-                # Extract model parameters (same as original)
-                model_args = model_config.get('model_args', [{}])[0]
-                kan_config = None
-                if '_args' in model_args and len(model_args['_args']) > 0:
-                    for outer_item in model_args['_args']:
-                        if isinstance(outer_item, list):
-                            for middle_item in outer_item:
-                                if isinstance(middle_item, list) and len(middle_item) >= 2:
-                                    if middle_item[0] == 'kan' and isinstance(middle_item[1], dict):
-                                        kan_config = middle_item[1].get('_kwargs', {})
+            
+            # The model config may be stored as a string under 'model' and actual args under 'model_args'
+            # Parse from model_args if available
+            kan_config = None
+            if isinstance(model_config, dict):
+                # Extract from 'model_args'
+                model_args = model_config.get('model_args')
+                if isinstance(model_args, list) and len(model_args) > 0:
+                    # The first element is the OrderedDict config
+                    ordered_dict_cfg = model_args[0]
+                    if isinstance(ordered_dict_cfg, dict):
+                        # The layers are under '_args'
+                        layers = ordered_dict_cfg.get('_args', [])
+                        if isinstance(layers, list) and len(layers) > 0:
+                            # Each layer is a dict with one key (e.g., 'kan')
+                            for layer_dict in layers:
+                                if isinstance(layer_dict, dict) and 'kan' in layer_dict:
+                                    kan_cfg = layer_dict['kan']
+                                    if isinstance(kan_cfg, dict):
+                                        kan_config = kan_cfg.get('_kwargs', {})
                                         break
-                        if kan_config:
-                            break
-                
-                if kan_config:
+
+            if kan_config:
+                try:
                     hidden_layers = kan_config.get('hidden_layers', [])
                     if hidden_layers:
                         tests.loc[idx, 'num_layers'] = len(hidden_layers) - 1
@@ -192,19 +206,23 @@ if __name__ == '__main__' :
                     tests.loc[idx, 'dropout_rate'] = str(dropout_rate_val)
                     
                     tests.loc[idx, 'dropout_linear'] = str(kan_config.get('dropout_linear', 'N/A'))
-                    
-                    # dynamic_dropout is inferred from whether dropout_rate is an UpdatableFloat or a float
-                    # We already have the value; we'll parse from train config later.
-            except Exception as e:
-                print(f'Warning: Could not parse model config for "{config_dir}": {e}')
+                except Exception as e:
+                    if not args.quiet:
+                        print(f'Warning: Could not parse model config for "{config_dir}": {e}')
+            # Extract use_logits from model_config directly
+            use_logits_val = model_config.get('outputs_logits', 'False')
+            tests.loc[idx, 'use_logits'] = 'Yes' if str(use_logits_val).lower() == 'true' else 'No'
         
         # ----- Load and parse train config (training hyperparams) -----  
         if os.path.exists(train_config_path):
             train_config = load_dict(train_config_path.replace('.json', ''))
-            # use_logits
-            tests.loc[idx, 'use_logits'] = 'Yes' if 'BCEWithLogitsLoss' in str(train_config) else 'No' # This is wrong!!!!!!!!!!!!!!!!!!
             
             # Extract optimizer info
+            opt_name = 'N/A'
+            weight_decay = 'N/A'
+            momentum = 'N/A'
+            
+            # Check if optimizer is stored as a string (old style) or dict
             opt = train_config.get('optimizer')
             if isinstance(opt, dict):
                 opt_name = opt.get('target_name', 'N/A')
@@ -212,19 +230,28 @@ if __name__ == '__main__' :
                 weight_decay = opt_kwargs.get('weight_decay', 'N/A')
                 momentum = opt_kwargs.get('momentum', 'N/A')
             else:
+                # It might be a string like "<class 'torch.optim.adamw.AdamW'>"
                 opt_name = str(opt) if opt is not None else 'N/A'
-                weight_decay = 'N/A'
-                momentum = 'N/A'
+                # Look for optimizer_kwargs separately
+                opt_kwargs = train_config.get('optimizer_kwargs', {})
+                if isinstance(opt_kwargs, dict):
+                    weight_decay = opt_kwargs.get('weight_decay', 'N/A')
+                    momentum = opt_kwargs.get('momentum', 'N/A')
             
             # Extract scheduler info
+            lr_factor = 'N/A'
+            lr_patience = 'N/A'
             sched = train_config.get('scheduler')
             if isinstance(sched, dict):
                 sched_kwargs = sched.get('_kwargs', {})
                 lr_factor = sched_kwargs.get('factor', 'N/A')
                 lr_patience = sched_kwargs.get('patience', 'N/A')
             else:
-                lr_factor = 'N/A'
-                lr_patience = 'N/A'
+                # Look for scheduler_kwargs separately
+                sched_kwargs = train_config.get('scheduler_kwargs', {})
+                if isinstance(sched_kwargs, dict):
+                    lr_factor = sched_kwargs.get('factor', 'N/A')
+                    lr_patience = sched_kwargs.get('patience', 'N/A')
             
             # Extract other training parameters
             train_params = {
@@ -253,7 +280,8 @@ if __name__ == '__main__' :
             if epochs:
                 test_metrics = history['test'][epochs[0]]
             else:
-                print(f'Dropped "{config_dir}"; no test metrics found after attempted run.')
+                if not args.quiet:
+                    print(f'Dropped "{config_dir}"; no test metrics found after attempted run.')
                 tests.drop(idx, axis=0, inplace=True)
                 continue
         
@@ -263,10 +291,10 @@ if __name__ == '__main__' :
             tests.loc[idx, metric] = value
     
     # Continue with the rest of the original script (plotting, top 5, etc.)
-    tests['Configuration'] = [_[:args.limit] for _ in tests['Configuration'].values]
+    if args.limit > 0:
+        tests['Configuration'] = [_[:args.limit] for _ in tests['Configuration'].values]
     
     # Drop columns that are all NaN (but keep hyperparams even if some are NaN)
-    # We'll drop only metric columns that are all NaN; hyperparams are kept.
     config_cols = ['Configuration', 'Version'] + all_hyperparams
     metric_cols = [col for col in tests.columns if col not in config_cols]
     for col in metric_cols:
@@ -275,7 +303,7 @@ if __name__ == '__main__' :
     # Recompute metric_cols after dropping
     metric_cols = [col for col in tests.columns if col not in config_cols]
     
-    # --- Print model configurations with all hyperparameters ---
+    # --- Print model configurations with all hyperparameters (compact) ---
     print("\n" + "="*80)
     print(f"MODEL CONFIGURATIONS - {DATASET_NAME.upper()}")
     print("="*80)
@@ -283,22 +311,31 @@ if __name__ == '__main__' :
         config_name = tests.loc[idx, 'Configuration']
         version = tests.loc[idx, 'Version']
         print(f"\n[{config_name} / {version}]")
-        # Model hyperparams
-        print(f"  Model:")
-        print(f"    Layers: {tests.loc[idx, 'num_layers']} | Hidden: {tests.loc[idx, 'hidden_layers']} | Mode: {tests.loc[idx, 'mode']} | Grids: {tests.loc[idx, 'grids']}")
-        print(f"    GridMin: {tests.loc[idx, 'grid_min']} | GridMax: {tests.loc[idx, 'grid_max']} | Scale: {tests.loc[idx, 'scale']} | Logits: {tests.loc[idx, 'use_logits']}")
-        print(f"    Residual: {tests.loc[idx, 'residual']} | Dynamic: {tests.loc[idx, 'dynamic']} | UseV2: {tests.loc[idx, 'use_v2']} | Normalize: {tests.loc[idx, 'normalize']} | NormalizeRBF: {tests.loc[idx, 'normalize_rbf']}")
-        print(f"    DropoutRate: {tests.loc[idx, 'dropout_rate']} | DropoutLinear: {tests.loc[idx, 'dropout_linear']}")
-        # Training hyperparams
-        print(f"  Training:")
-        print(f"    Seed: {tests.loc[idx, 'seed']} | Batch: {tests.loc[idx, 'batch_size']} | LR: {tests.loc[idx, 'lr']} | Optimizer: {tests.loc[idx, 'optimizer']}")
-        print(f"    WeightDecay: {tests.loc[idx, 'weight_decay']} | Momentum: {tests.loc[idx, 'momentum']} | ClipLimit: {tests.loc[idx, 'clip_limit']}")
-        print(f"    LRFactor: {tests.loc[idx, 'lr_factor']} | LRPatience: {tests.loc[idx, 'lr_patience']} | Resize: {tests.loc[idx, 'resize']}")
-        print(f"    Prob: {tests.loc[idx, 'probability']} | Patience: {tests.loc[idx, 'patience']} | Epochs: {tests.loc[idx, 'epochs']} | DynamicDropout: {tests.loc[idx, 'dynamic_dropout']}")
+        # Model hyperparams (single line)
+        model_line = (
+            f"Model: Layers={tests.loc[idx, 'num_layers']} | Hidden={tests.loc[idx, 'hidden_layers']} | "
+            f"Mode={tests.loc[idx, 'mode']} | Grids={tests.loc[idx, 'grids']} | "
+            f"GridMin={tests.loc[idx, 'grid_min']} | GridMax={tests.loc[idx, 'grid_max']} | "
+            f"Scale={tests.loc[idx, 'scale']} | Logits={tests.loc[idx, 'use_logits']} | "
+            f"Residual={tests.loc[idx, 'residual']} | Dynamic={tests.loc[idx, 'dynamic']} | "
+            f"UseV2={tests.loc[idx, 'use_v2']} | Norm={tests.loc[idx, 'normalize']} | "
+            f"NormRBF={tests.loc[idx, 'normalize_rbf']} | Dropout={tests.loc[idx, 'dropout_rate']} | "
+            f"DropoutLinear={tests.loc[idx, 'dropout_linear']}"
+        )
+        print("  " + model_line)
+        # Training hyperparams (single line)
+        train_line = (
+            f"Train: Seed={tests.loc[idx, 'seed']} | Batch={tests.loc[idx, 'batch_size']} | "
+            f"LR={tests.loc[idx, 'lr']} | Opt={tests.loc[idx, 'optimizer']} | "
+            f"WD={tests.loc[idx, 'weight_decay']} | Mom={tests.loc[idx, 'momentum']} | "
+            f"Clip={tests.loc[idx, 'clip_limit']} | LRFact={tests.loc[idx, 'lr_factor']} | "
+            f"LRPat={tests.loc[idx, 'lr_patience']} | Resize={tests.loc[idx, 'resize']} | "
+            f"Prob={tests.loc[idx, 'probability']} | Pat={tests.loc[idx, 'patience']} | "
+            f"Epochs={tests.loc[idx, 'epochs']} | DynDrop={tests.loc[idx, 'dynamic_dropout']}"
+        )
+        print("  " + train_line)
     
-    print("\n" + "="*80)
-    print(tests)
-    print("="*80)
+    # Do not print the huge DataFrame; it's already summarized above.
     
     plt_dir = os.path.join(args.test_dir, 'comparison')
     os.makedirs(plt_dir, exist_ok=True)
@@ -314,7 +351,7 @@ if __name__ == '__main__' :
             subplots = True,
             legend   = False,
             sharex   = False,
-            figsize  = (3 + len(metric_cols), 1.5+0.75*len(tests)),
+            figsize  = (3 + len(metric_cols), 1.5 + len(tests)),
         )
         plt.xticks(rotation = 45, fontsize=7) 
         [axi.set(xlim=(0.999*tests_g[col].min(), 1.001*tests_g[col].max())) for axi, col in zip(ax, metric_cols)]
