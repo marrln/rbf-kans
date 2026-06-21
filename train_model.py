@@ -2,6 +2,8 @@
 
 if __name__ == '__main__':
     import sys, os
+    import random
+    import numpy as np
     from argparse import ArgumentParser
     from augmentations import Augmentor # pyright: ignore[reportMissingImports]
     
@@ -64,7 +66,6 @@ if __name__ == '__main__':
     
     import torch
     from torch.utils.data import DataLoader
-    import albumentations as A
     
     from rbfkan_utils.config import *
     from rbfkan_utils.utils.dataset import smart_split_dataset
@@ -100,11 +101,9 @@ if __name__ == '__main__':
 
     build_dataset() # Build dataset if not already built
     
-    # Instantiate the augmentor
     augmentor = Augmentor(train_config)
     
     data, labels = get_dataset('train_val')
-    # Create iterable train and val datasets
     train_indices, val_indices = smart_split_dataset(
         splits       = train_config['splits'],
         full_dataset = None,
@@ -146,16 +145,33 @@ if __name__ == '__main__':
         )
     )
 
+    # Worker init function to seed each worker's random generators independently
+    def worker_init_fn(worker_id):
+        base_seed = train_config['seed']
+        # Unique seed per worker to avoid duplicate augmentation sequences
+        np.random.seed(base_seed + worker_id)
+        random.seed(base_seed + worker_id)
+        torch.manual_seed(base_seed + worker_id)
+
+    # Dedicated generator for shuffling (decouples shuffle order from global RNG)
+    shuffle_generator = torch.Generator()
+    shuffle_generator.manual_seed(train_config['seed'])
+
     train_loader = DataLoader(
         dataset            = train_dataset,
         batch_size         = train_config['batch_size'],
+        shuffle            = True,                  # <-- FIXED: Critical for i.i.d. assumption
+        generator          = shuffle_generator,    # <-- ADDED: Controls only index order
+        worker_init_fn     = worker_init_fn,       # <-- ADDED: Controls augmentations per worker
         num_workers        = os.cpu_count(),
         persistent_workers = True,
         pin_memory         = (device == torch.device('cuda')),
     )
+
     val_loader = DataLoader(
         dataset            = val_dataset,
         batch_size         = train_config['batch_size'],
+        shuffle            = False,  # Explicitly False for clarity
         num_workers        = os.cpu_count(),
         persistent_workers = True,
         pin_memory         = (device == torch.device('cuda')),
@@ -179,7 +195,7 @@ if __name__ == '__main__':
         resume_training     = not args.no_resume,   # resume by default, use --no-resume to start fresh
         sample_weight       = train_config['sample_weight'],
         clip_limit          = train_config.get('clip_limit', 1.0),
-        update_limit        = 100,
+        update_limit        = 500,
         top_dirname         = args.test_dir,
         device              = device,
         evaluate_training   = False,
