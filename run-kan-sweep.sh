@@ -121,6 +121,7 @@ max_experiments=-1
 no_pbar=0
 assume_yes=
 assume_no=
+skip_experiments=0
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -134,6 +135,7 @@ Usage: run-kan-sweep.sh [options]
     -j, --jobs N            Parallel jobs
     --no-pbar               Disable progress bars
     -y / -N                 Assume yes / no
+    -s, --skip-experiments N  Skip first N experiments
 EOF
             exit 0 ;;
         -d|--dry-run) dryrun=1; verbose=1; shift ;;
@@ -144,6 +146,7 @@ EOF
         --no-pbar) no_pbar=1; shift ;;
         -y) assume_yes=1; shift ;;
         -N) assume_no=1; shift ;;
+        -s|--skip-experiments) skip_experiments=$2; shift 2 ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
 done
@@ -154,7 +157,21 @@ mkdir -p "$RESULTS_DIR"
 # Generate all combinations
 generate_combinations
 total_lines=$(wc -l < /tmp/sweep_combos.txt)
-[ $max_experiments -gt 0 ] && [ $max_experiments -lt $total_lines ] && total_lines=$max_experiments
+
+# Apply skip
+if [ $skip_experiments -gt 0 ]; then
+    if [ $skip_experiments -ge $total_lines ]; then
+        echo "Skipping all experiments (skip >= total). Nothing to do."
+        rm -f /tmp/sweep_combos.txt
+        exit 0
+    fi
+    total_lines=$((total_lines - skip_experiments))
+fi
+
+# Apply max experiments
+if [ $max_experiments -gt 0 ] && [ $max_experiments -lt $total_lines ]; then
+    total_lines=$max_experiments
+fi
 
 echo "========================================="
 echo "KAN Parameter Sweep"
@@ -176,7 +193,7 @@ echo "Sweep started at $(date)" > "$RESULTS_DIR/sweep_log.txt"
 echo "Total experiments: $total_lines" >> "$RESULTS_DIR/sweep_log.txt"
 
 # ------------------------------------------------------------
-# Main loop: read tab‑separated lines
+# Main loop: read tab‑separated lines, skipping first N
 # ------------------------------------------------------------
 experiment_num=0
 failed=0
@@ -187,7 +204,7 @@ while IFS= read -r line; do
 
     # Split line into fields using tab delimiter
     IFS=$'\t' read -r -a fields <<< "$line"
-    # field indices (0-24 are old, 25-28 are new):
+    # field indices
     # 0: with_logit, 1: test_version, 2: seed, 3: layers, 4: num_grids,
     # 5: grid_min, 6: grid_max, 7: scale, 8: mode, 9: residual,
     # 10: dynamic, 11: use_v2, 12: no_normalize, 13: no_normalize_rbf,
@@ -228,11 +245,8 @@ while IFS= read -r line; do
     # [ -n "${fields[25]}" ] && args="$args --resize \"${fields[25]}\""
     # augment-probability
     [ -n "${fields[26]}" ] && args="$args --augment-probability ${fields[26]}"
-    # dynamic-dropout flag
     [ "${fields[27]}" = "1" ] && args="$args --dynamic-dropout"
-    # clip-limit
     [ -n "${fields[28]}" ] && args="$args --clip-limit ${fields[28]}"
-    # -------------------------
 
     args="$args --dataset $DATASET"
 
@@ -288,7 +302,6 @@ while IFS= read -r line; do
             echo "optimizer,${fields[22]}"
             echo "weight_decay,${fields[23]}"
             echo "momentum,${fields[24]}"
-            # New parameters
             echo "resize,${fields[25]}"
             echo "augment_probability,${fields[26]}"
             echo "dynamic_dropout,${fields[27]}"
@@ -356,7 +369,7 @@ while IFS= read -r line; do
         [ $? -ne 0 ] && ((failed++))
     fi
 
-done < /tmp/sweep_combos.txt
+done < <(tail -n +$((skip_experiments+1)) /tmp/sweep_combos.txt)
 
 # Wait for all background jobs
 wait
