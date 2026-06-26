@@ -3,3 +3,7 @@ train/
 
 cifar-100-python.tar.gz
 cifar-100-python
+
+tr_statistics.csv
+val_statistics.csv
+val_statistics(1).csv
