@@ -32,7 +32,7 @@ class RSWAFFunction(Function):
         return tanh_diff_deriviative
     
     @staticmethod
-    def backward(ctx, grad_output,train_grid: bool = True, train_inv_denominator: bool = True, gradient_boost=1):
+    def backward(ctx, grad_output,train_grid: bool = True, train_inv_denominator: bool = True, gradient_boost=10):
         inv_denominator, diff_mul, tanh_diff, tanh_diff_deriviative = ctx.saved_tensors
         grad_grid = grad_inv_denominator = None
         
@@ -45,11 +45,11 @@ class RSWAFFunction(Function):
 
         # Compute the backward pass for grid
         if ctx.train_grid:
-            grad_grid = - gradient_boost * deriv.sum(dim=-2) # NOTE: We boost the gradient by 10 to make it more significant
+            grad_grid = - gradient_boost * deriv.sum(dim=-2) 
 
         # Compute the backward pass for inv_denominator        
         if ctx.train_inv_denominator:
-            grad_inv_denominator = gradient_boost * (diff_mul * deriv).sum(0) # NOTE: We boost the gradient by 10 to make it more significant
+            grad_inv_denominator = gradient_boost * (diff_mul * deriv).sum(0)
 
             if inv_denominator.view(-1).size(0) == 1 :
                 grad_inv_denominator = grad_inv_denominator.sum()
