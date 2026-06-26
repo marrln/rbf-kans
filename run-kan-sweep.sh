@@ -5,30 +5,30 @@
 ########################################
 
 WITH_LOGITS=(1)
-TEST_VERSIONS=("20")
-SEEDS=(42)
+TEST_VERSIONS=("")
+SEEDS=(123)
 
-LAYERS_LIST=("64" "256" "512")        # multi‑layer hidden sizes
-NUM_GRIDS_LIST=("16")                      # per‑layer grids
-GRID_MIN_LIST=("-3.0" "-1.5")
-GRID_MAX_LIST=("1.5" "3.0")
-SCALE_LIST=("2")
-MODES=('RSWAFF' 'PReLU')
-RESIDUALS=(0)
-DYNAMICS=(0 1)
+LAYERS_LIST=("64 64" "256 256" "512 512")        # multi‑layer hidden sizes
+NUM_GRIDS_LIST=("1")                             # per‑layer grids
+GRID_MIN_LIST=("1.0")
+GRID_MAX_LIST=("2.0")
+SCALE_LIST=("1")
+MODES=('RSWAFF')
+RESIDUALS=(0 1)
+DYNAMICS=(1)
 USE_V2S=(0)
 NO_NORMALIZES=(0)
 NO_NORMALIZE_RBFS=(0)
 DROPOUTS=(0.3)
 DROPOUT_LINEAR_LIST=(0.3)
 EPOCHS_LIST=(1000)
-PATIENCE_LIST=(80)
+PATIENCE_LIST=(100)
 BATCH_SIZES=(128)
-LEARNING_RATES=(1e-5 1e-4)
+LEARNING_RATES=(1e-5)
 LR_FACTORS=(0.5)
 LR_PATIENCE_LIST=(25)
 OPTIMIZERS=("AdamW")
-WEIGHT_DECAYS=(1e-2 1e-3)
+WEIGHT_DECAYS=(1e-3)
 MOMENTUMS=("0.9")
 
 # ----- NEW PARAMETERS -----
