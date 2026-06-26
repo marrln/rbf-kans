@@ -84,48 +84,47 @@ if __name__ == '__main__':
 
     # Determine which checkpoint to load for history
     model_dir = os.path.join(args.test_dir, 'models')
-    if args.epoch == 'best':
-        checkpoint_path = os.path.join(model_dir, 'best.pt')
-    else:
-        checkpoint_path = os.path.join(model_dir, 'last.pt')
+    last_checkpoint_path = os.path.join(model_dir, 'last.pt')
+    if not os.path.exists(last_checkpoint_path):
+        raise FileNotFoundError(f"Last checkpoint not found: {last_checkpoint_path}")
     
-    if not os.path.exists(checkpoint_path):
-        raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
-    
-    print(f"Loading history from {checkpoint_path}")
-    checkpoint = load_checkpoint(checkpoint_path, load_rng=False)
-    history = checkpoint['history']   # contains 'train' and 'val' keys
+    print(f"Loading full history from {last_checkpoint_path}")
+    checkpoint = load_checkpoint(last_checkpoint_path, load_rng=False)
+    history = checkpoint['history']   # contains 'train' and 'val' with all epochs
 
-    # Extract test metrics (or fallback to validation if missing)
-    if 'test' not in history:
-        print("Warning: No 'test' key found in history. Using validation metrics instead.")
-        if args.epoch == 'best':
-            # Find best validation loss epoch
-            best_val_loss = float('inf')
-            best_epoch = None
-            for ep, metrics in history['val'].items():
-                if metrics['loss'] < best_val_loss:
-                    best_val_loss = metrics['loss']
-                    best_epoch = ep
-            test_metrics = history['val'][best_epoch]
-            print(f"Using validation metrics from epoch {best_epoch} (best validation loss: {best_val_loss:.5f})")
-        else:
-            epoch_int = int(args.epoch)
-            if epoch_int in history['val']:
-                test_metrics = history['val'][epoch_int]
-            else:
-                raise KeyError(f"Epoch {args.epoch} not found in validation history. Available epochs: {sorted(history['val'].keys())}")
+    # Determine which epoch to use for test metrics / CSV files
+    if args.epoch == 'best':
+        # Find epoch with minimum validation loss from the full history
+        best_val_loss = float('inf')
+        best_epoch = None
+        for ep, metrics in history['val'].items():
+            if metrics['loss'] < best_val_loss:
+                best_val_loss = metrics['loss']
+                best_epoch = ep
+        if best_epoch is None:
+            raise RuntimeError("No validation metrics found in history.")
+        use_epoch = best_epoch
+        print(f"Using best validation epoch: {use_epoch} (loss = {best_val_loss:.5f})")
     else:
-        test = history['test'].get(args.epoch, None)
-        if test is None:
-            raise KeyError(f"Epoch '{args.epoch}' not found in test history. Available: {list(history['test'].keys())}")
-        test_metrics = test
+        try:
+            use_epoch = int(args.epoch)
+        except ValueError:
+            raise ValueError(f"Invalid epoch value: {args.epoch}. Must be 'best' or an integer.")
+        if use_epoch not in history['val']:
+            raise KeyError(f"Epoch {use_epoch} not found in validation history. Available: {sorted(history['val'].keys())}")
+        print(f"Using specified epoch: {use_epoch}")
+
+    if 'test' in history and use_epoch in history['test']:
+        test_metrics = history['test'][use_epoch]
+        print(f"Using test metrics from epoch {use_epoch}")
+    else:
+        print(f"Warning: No test metrics for epoch {use_epoch}. Using validation metrics instead.")
+        test_metrics = history['val'][use_epoch]
     
     # Print basic statistics
-    print(f'Loss for epoch "{args.epoch}": {test_metrics["loss"]}')
-    
+    print(f'Loss for epoch "{use_epoch}": {test_metrics["loss"]}')
     for key in test_metrics:
-        print(f'{key} for epoch "{args.epoch}": {test_metrics[key]}')
+        print(f'{key} for epoch "{use_epoch}": {test_metrics[key]}')
 
     # Create plots directory
     plots_path = os.path.join(args.test_dir, 'plot')
@@ -190,12 +189,12 @@ if __name__ == '__main__':
                                    save_path=metric_save)
                 print(f"{metric} curve saved to: {metric_save}")
 
-    # ---------- PLOT 4: Bar chart of test metrics ----------
+    # ---------- PLOT 4: Bar chart of test metrics (for chosen epoch) ----------
     test_bar_save = os.path.join(plots_path, 'test_metrics_bar.png')
     # Exclude non-scalar entries automatically handled inside function
     plot_test_metrics_bar(test_metrics,
                           color='skyblue',
-                          title=f'Test Set Metrics - {DATASET_NAME.upper()} (Epoch {args.epoch})',
+                          title=f'Test Set Metrics - {DATASET_NAME.upper()} (Epoch {use_epoch})',
                           save_path=test_bar_save)
     print(f"Test metrics bar chart saved to: {test_bar_save}")
 
@@ -215,13 +214,15 @@ if __name__ == '__main__':
         print(f"Precision-Recall Curve saved to: {save_path}")
 
     # ---------- PLOT 6: Confusion Matrices & Regression plots ----------
+    # Use the CSV files for the chosen epoch (use_epoch)
     rslt_path = os.path.join(args.test_dir, 'rslt')
+    epoch_str = str(use_epoch)
 
     gt_df = pd.read_csv(os.path.join(rslt_path, 'ground_truth.csv'), index_col='Index')
-    pr_df = pd.read_csv(os.path.join(rslt_path, f'{args.epoch}.csv'), index_col='Index')
+    pr_df = pd.read_csv(os.path.join(rslt_path, f'{epoch_str}.csv'), index_col='Index')
 
     categories = create_labels(save=False)
-    os.makedirs(os.path.join(plots_path, args.epoch), exist_ok=True)
+    os.makedirs(os.path.join(plots_path, epoch_str), exist_ok=True)
 
     # Extract Confusion Matrices for each set of categories
     categorical_cols = []
@@ -233,12 +234,10 @@ if __name__ == '__main__':
         categorical_cols.extend(gt_cols)
         categorical_cols.extend(pr_cols)
         
-        # Get DataFrame slices
         gt_slice = gt_df[gt_cols].copy()
         pr_slice = pr_df[pr_cols].copy()
         
         if len(gt_cols) == 1:
-            # Single column with class indices - map to class names
             idx_to_class = {val: key for key, val in types.items()}
             gt_type = gt_slice[gt_cols[0]].map(idx_to_class)
         else:
@@ -249,15 +248,10 @@ if __name__ == '__main__':
                 gt_type = gt_slice
                 
         if len(pr_cols) == 1:
-            # Single column with class indices - map to class names
             idx_to_class = {val: key for key, val in types.items()}
             pr_type = pr_slice[pr_cols[0]].map(idx_to_class)
         else:
-            # Multiple probability columns - take argmax
-            # Fix DataFrames
             pr_slice.columns = [col[col.find('_Is_')+4:] for col in pr_slice.columns]
-            
-            # Find probabilities of the unknown class
             if train_config['task'] == 'multiclass':
                 pr_type = pr_slice.apply(np.argmax, axis=1).map(dict(enumerate(pr_slice.columns)))
             else:
@@ -266,7 +260,7 @@ if __name__ == '__main__':
         cm = confusion_matrix(gt_type.values, pr_type.values, labels=class_names)
         print(f"Confusion matrix \n{cm}")
         
-        save_path = os.path.join(plots_path, args.epoch, f'cm_{category}.png')
+        save_path = os.path.join(plots_path, epoch_str, f'cm_{category}.png')
         plot_confusion_matrix(
             cm, 
             class_names, 
@@ -287,7 +281,7 @@ if __name__ == '__main__':
         plt.xlabel('Index')
         plt.ylabel(col)
 
-        save_path = os.path.join(plots_path, args.epoch, f'{col}.png')
+        save_path = os.path.join(plots_path, epoch_str, f'{col}.png')
         plt.savefig(save_path)
         print(f"{col} Diagram saved to: {save_path}")
         plt.close('all')
