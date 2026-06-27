@@ -5,17 +5,17 @@
 ########################################
 
 WITH_LOGITS=(1)
-TEST_VERSIONS=("")
+TEST_VERSIONS=("0")
 SEEDS=(123)
 
-LAYERS_LIST=("64 64" "256 256" "512 512")        # multi‑layer hidden sizes
-NUM_GRIDS_LIST=("1")                             # per‑layer grids
-GRID_MIN_LIST=("1.0")
-GRID_MAX_LIST=("2.0")
-SCALE_LIST=("1")
+LAYERS_LIST=("256 256" "512 512")        # multi‑layer hidden sizes
+NUM_GRIDS_LIST=("16")                             # per‑layer grids
+GRID_MIN_LIST=("-2.0" "-1.65")
+GRID_MAX_LIST=("2.0" "1.65")
+SCALE_LIST=("2" "0.5")
 MODES=('RSWAFF')
 RESIDUALS=(0 1)
-DYNAMICS=(1)
+DYNAMICS=(1 0)
 USE_V2S=(0)
 NO_NORMALIZES=(0)
 NO_NORMALIZE_RBFS=(0)
@@ -65,39 +65,30 @@ import itertools, sys
 def parse_arg(s):
     return s.split() if s.strip() != "" else [""]
 
-# Exactly 29 arguments, in the exact order of your arrays
-arrays = [
-    parse_arg(sys.argv[1]), parse_arg(sys.argv[2]),  # WITH_LOGITS, TEST_VERSIONS
-    parse_arg(sys.argv[3]),                          # SEEDS
-    parse_arg(sys.argv[4]),                          # LAYERS_LIST
-    parse_arg(sys.argv[5]),                          # NUM_GRIDS_LIST
-    parse_arg(sys.argv[6]), parse_arg(sys.argv[7]),  # GRID_MIN, GRID_MAX
-    parse_arg(sys.argv[8]),                          # SCALE_LIST
-    parse_arg(sys.argv[9]),                          # MODES
-    parse_arg(sys.argv[10]),                         # RESIDUALS
-    parse_arg(sys.argv[11]),                         # DYNAMICS
-    parse_arg(sys.argv[12]),                         # USE_V2S
-    parse_arg(sys.argv[13]),                         # NO_NORMALIZES
-    parse_arg(sys.argv[14]),                         # NO_NORMALIZE_RBFS
-    parse_arg(sys.argv[15]),                         # DROPOUTS
-    parse_arg(sys.argv[16]),                         # DROPOUT_LINEAR_LIST
-    parse_arg(sys.argv[17]),                         # EPOCHS_LIST
-    parse_arg(sys.argv[18]),                         # PATIENCE_LIST
-    parse_arg(sys.argv[19]),                         # BATCH_SIZES
-    parse_arg(sys.argv[20]),                         # LEARNING_RATES
-    parse_arg(sys.argv[21]),                         # LR_FACTORS
-    parse_arg(sys.argv[22]),                         # LR_PATIENCE_LIST
-    parse_arg(sys.argv[23]),                         # OPTIMIZERS
-    parse_arg(sys.argv[24]),                         # WEIGHT_DECAYS
-    parse_arg(sys.argv[25]),                         # MOMENTUMS
-    parse_arg(sys.argv[26]),                         # RESIZE_LIST
-    parse_arg(sys.argv[27]),                         # AUGMENT_PROB_LIST
-    parse_arg(sys.argv[28]),                         # DYNAMIC_DROPOUT_LIST
-    parse_arg(sys.argv[29]),                         # GRAD_CLIP_LIST
-]
+# Parse all 29 argument strings into lists
+all_arrays = [parse_arg(sys.argv[i]) for i in range(1, 30)]
 
-for combo in itertools.product(*arrays):
-    sys.stdout.write("\t".join(combo) + "\n")
+# dynamic is at index 10 (0‑based)
+dynamic_vals = all_arrays[10]
+
+# Build a list of all arrays except dynamic (index 10)
+other_arrays = all_arrays[:10] + all_arrays[11:]
+
+# For each dynamic value, generate combinations
+for dyn in dynamic_vals:
+    # Copy the other arrays
+    temp = other_arrays[:]
+    if dyn == "1":
+        # When dynamic=1, ignore grid_min, grid_max, scale (set to empty)
+        # They are at indices 5,6,7 in the original order, and still at the same positions in 'other_arrays'
+        temp[5] = [""]
+        temp[6] = [""]
+        temp[7] = [""]
+    # Cartesian product of all remaining arrays
+    for combo in itertools.product(*temp):
+        full = list(combo)
+        full.insert(10, dyn)          # insert dynamic back at its original position
+        sys.stdout.write("\t".join(full) + "\n")
 ' "${WITH_LOGITS[*]}" "${TEST_VERSIONS[*]}" "${SEEDS[*]}" \
   "${LAYERS_LIST[*]}" "${NUM_GRIDS_LIST[*]}" "${GRID_MIN_LIST[*]}" \
   "${GRID_MAX_LIST[*]}" "${SCALE_LIST[*]}" "${MODES[*]}" \
@@ -204,25 +195,17 @@ while IFS= read -r line; do
 
     # Split line into fields using tab delimiter
     IFS=$'\t' read -r -a fields <<< "$line"
-    # field indices
-    # 0: with_logit, 1: test_version, 2: seed, 3: layers, 4: num_grids,
-    # 5: grid_min, 6: grid_max, 7: scale, 8: mode, 9: residual,
-    # 10: dynamic, 11: use_v2, 12: no_normalize, 13: no_normalize_rbf,
-    # 14: dropout, 15: dropout_linear, 16: epochs, 17: patience,
-    # 18: batch, 19: lr, 20: lr_factor, 21: lr_patience,
-    # 22: optimizer, 23: weight_decay, 24: momentum,
-    # 25: resize, 26: augment_prob, 27: dynamic_dropout, 28: clip_limit
 
     # Build arguments for create_config.py – quote multi‑token values
     args=""
     [ "${fields[0]}" = "1" ] && args="$args --with-logits"
     [ -n "${fields[1]}" ] && args="$args --test-version \"${fields[1]}\""
     [ -n "${fields[2]}" ] && args="$args --seed ${fields[2]}"
-    [ -n "${fields[3]}" ] && args="$args --layers \"${fields[3]}\""
-    [ -n "${fields[4]}" ] && args="$args --num-grids \"${fields[4]}\""
-    [ -n "${fields[5]}" ] && args="$args --grid-min \"${fields[5]}\""
-    [ -n "${fields[6]}" ] && args="$args --grid-max \"${fields[6]}\""
-    [ -n "${fields[7]}" ] && args="$args --scale \"${fields[7]}\""
+    [ -n "${fields[3]}" ] && args="$args --layers ${fields[3]}"
+    [ -n "${fields[4]}" ] && args="$args --num-grids ${fields[4]}"
+    [ -n "${fields[5]}" ] && args="$args --grid-min ${fields[5]}"
+    [ -n "${fields[6]}" ] && args="$args --grid-max ${fields[6]}"
+    [ -n "${fields[7]}" ] && args="$args --scale ${fields[7]}"
     [ -n "${fields[8]}" ] && args="$args --mode ${fields[8]}"
     [ "${fields[9]}" = "1" ] && args="$args --residual"
     [ "${fields[10]}" = "1" ] && args="$args --dynamic"
@@ -240,10 +223,9 @@ while IFS= read -r line; do
     [ -n "${fields[22]}" ] && args="$args --optimizer ${fields[22]}"
     [ -n "${fields[23]}" ] && args="$args --weight-decay ${fields[23]}"
     [ -n "${fields[24]}" ] && args="$args --momentum ${fields[24]}"
-
-    # resize: if non-empty, pass it; otherwise skip
-    # [ -n "${fields[25]}" ] && args="$args --resize \"${fields[25]}\""
-    # augment-probability
+    if [ -n "${fields[25]}" ]; then
+        args="$args --resize ${fields[25]}"
+    fi
     [ -n "${fields[26]}" ] && args="$args --augment-probability ${fields[26]}"
     [ "${fields[27]}" = "1" ] && args="$args --dynamic-dropout"
     [ -n "${fields[28]}" ] && args="$args --clip-limit ${fields[28]}"
