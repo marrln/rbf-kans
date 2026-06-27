@@ -8,19 +8,19 @@ WITH_LOGITS=(1)
 TEST_VERSIONS=("0")
 SEEDS=(123)
 
-LAYERS_LIST=("256 256" "512 512")        # multi‑layer hidden sizes
-NUM_GRIDS_LIST=("16")                             # per‑layer grids
-GRID_MIN_LIST=("-2.0" "-1.65")
-GRID_MAX_LIST=("2.0" "1.65")
-SCALE_LIST=("2" "0.5")
+LAYERS_LIST=("64" "512" "256 256" "512 512" "64 64 64")        # multi‑layer hidden sizes
+NUM_GRIDS_LIST=("8" "16")                                      # per‑layer grids
+GRID_MIN_LIST=("-1.65")
+GRID_MAX_LIST=("2.0")
+SCALE_LIST=("2")
 MODES=('RSWAFF')
 RESIDUALS=(0 1)
-DYNAMICS=(1 0)
+DYNAMICS=(0 1)
 USE_V2S=(0)
 NO_NORMALIZES=(0)
 NO_NORMALIZE_RBFS=(0)
-DROPOUTS=(0.3)
-DROPOUT_LINEAR_LIST=(0.3)
+DROPOUTS=(0.2)
+DROPOUT_LINEAR_LIST=(0.2)
 EPOCHS_LIST=(1000)
 PATIENCE_LIST=(100)
 BATCH_SIZES=(128)
@@ -54,51 +54,83 @@ RESULTS_DIR="$THIS_DIR/$DATASET/train/sweep_results"
 ########################################
 
 # ------------------------------------------------------------
-# Generate all combinations using Python (tab‑separated)
+# Generate all unique combinations (with filtering)
 # ------------------------------------------------------------
 generate_combinations() {
+    # Join each array with '|' to preserve multi‑token elements
+    join_by_pipe() {
+        local IFS='|'
+        echo "$*"
+    }
+
     python3 -c '
 import itertools, sys
 
-# If an argument is empty, it represents a single empty element in the product.
-# If it has spaces, split it into multiple elements.
-def parse_arg(s):
-    return s.split() if s.strip() != "" else [""]
+def split_pipe(s):
+    """Split by pipe, preserve empty elements."""
+    return s.split("|") if s != "" else [""]
 
-# Parse all 29 argument strings into lists
-all_arrays = [parse_arg(sys.argv[i]) for i in range(1, 30)]
+# Parse all 29 arguments into lists
+all_arrays = [split_pipe(sys.argv[i]) for i in range(1, 30)]
 
-# dynamic is at index 10 (0‑based)
-dynamic_vals = all_arrays[10]
+def layers_valid(layers_str):
+    """Return True if layers have at least one adjacent equal pair."""
+    layers = layers_str.split()
+    if len(layers) < 2:
+        return False
+    for i in range(len(layers)-1):
+        if layers[i] == layers[i+1]:
+            return True
+    return False
 
-# Build a list of all arrays except dynamic (index 10)
-other_arrays = all_arrays[:10] + all_arrays[11:]
+# Iterate over all combinations (preserving original order)
+for combo in itertools.product(*all_arrays):
+    dynamic = combo[10]
+    residual = combo[9]
+    layers = combo[3]
 
-# For each dynamic value, generate combinations
-for dyn in dynamic_vals:
-    # Copy the other arrays
-    temp = other_arrays[:]
-    if dyn == "1":
-        # When dynamic=1, ignore grid_min, grid_max, scale (set to empty)
-        # They are at indices 5,6,7 in the original order, and still at the same positions in 'other_arrays'
-        temp[5] = [""]
-        temp[6] = [""]
-        temp[7] = [""]
-    # Cartesian product of all remaining arrays
-    for combo in itertools.product(*temp):
-        full = list(combo)
-        full.insert(10, dyn)          # insert dynamic back at its original position
-        sys.stdout.write("\t".join(full) + "\n")
-' "${WITH_LOGITS[*]}" "${TEST_VERSIONS[*]}" "${SEEDS[*]}" \
-  "${LAYERS_LIST[*]}" "${NUM_GRIDS_LIST[*]}" "${GRID_MIN_LIST[*]}" \
-  "${GRID_MAX_LIST[*]}" "${SCALE_LIST[*]}" "${MODES[*]}" \
-  "${RESIDUALS[*]}" "${DYNAMICS[*]}" "${USE_V2S[*]}" \
-  "${NO_NORMALIZES[*]}" "${NO_NORMALIZE_RBFS[*]}" "${DROPOUTS[*]}" \
-  "${DROPOUT_LINEAR_LIST[*]}" "${EPOCHS_LIST[*]}" "${PATIENCE_LIST[*]}" \
-  "${BATCH_SIZES[*]}" "${LEARNING_RATES[*]}" "${LR_FACTORS[*]}" \
-  "${LR_PATIENCE_LIST[*]}" "${OPTIMIZERS[*]}" "${WEIGHT_DECAYS[*]}" \
-  "${MOMENTUMS[*]}" "${RESIZE_LIST[*]}" "${AUGMENT_PROB_LIST[*]}" \
-  "${DYNAMIC_DROPOUT_LIST[*]}" "${GRAD_CLIP_LIST[*]}" \
+    # If dynamic=1, set grid_min, grid_max, scale to empty strings
+    if dynamic == "1":
+        combo_list = list(combo)
+        combo_list[5] = ""   # grid_min
+        combo_list[6] = ""   # grid_max
+        combo_list[7] = ""   # scale
+        combo = tuple(combo_list)
+
+    # If residual=1, skip invalid layer configurations
+    if residual == "1" and not layers_valid(layers):
+        continue
+
+    sys.stdout.write("|".join(combo) + "\n")
+' "$(join_by_pipe "${WITH_LOGITS[@]}")" \
+  "$(join_by_pipe "${TEST_VERSIONS[@]}")" \
+  "$(join_by_pipe "${SEEDS[@]}")" \
+  "$(join_by_pipe "${LAYERS_LIST[@]}")" \
+  "$(join_by_pipe "${NUM_GRIDS_LIST[@]}")" \
+  "$(join_by_pipe "${GRID_MIN_LIST[@]}")" \
+  "$(join_by_pipe "${GRID_MAX_LIST[@]}")" \
+  "$(join_by_pipe "${SCALE_LIST[@]}")" \
+  "$(join_by_pipe "${MODES[@]}")" \
+  "$(join_by_pipe "${RESIDUALS[@]}")" \
+  "$(join_by_pipe "${DYNAMICS[@]}")" \
+  "$(join_by_pipe "${USE_V2S[@]}")" \
+  "$(join_by_pipe "${NO_NORMALIZES[@]}")" \
+  "$(join_by_pipe "${NO_NORMALIZE_RBFS[@]}")" \
+  "$(join_by_pipe "${DROPOUTS[@]}")" \
+  "$(join_by_pipe "${DROPOUT_LINEAR_LIST[@]}")" \
+  "$(join_by_pipe "${EPOCHS_LIST[@]}")" \
+  "$(join_by_pipe "${PATIENCE_LIST[@]}")" \
+  "$(join_by_pipe "${BATCH_SIZES[@]}")" \
+  "$(join_by_pipe "${LEARNING_RATES[@]}")" \
+  "$(join_by_pipe "${LR_FACTORS[@]}")" \
+  "$(join_by_pipe "${LR_PATIENCE_LIST[@]}")" \
+  "$(join_by_pipe "${OPTIMIZERS[@]}")" \
+  "$(join_by_pipe "${WEIGHT_DECAYS[@]}")" \
+  "$(join_by_pipe "${MOMENTUMS[@]}")" \
+  "$(join_by_pipe "${RESIZE_LIST[@]}")" \
+  "$(join_by_pipe "${AUGMENT_PROB_LIST[@]}")" \
+  "$(join_by_pipe "${DYNAMIC_DROPOUT_LIST[@]}")" \
+  "$(join_by_pipe "${GRAD_CLIP_LIST[@]}")" \
   > /tmp/sweep_combos.txt
 }
 
@@ -184,7 +216,7 @@ echo "Sweep started at $(date)" > "$RESULTS_DIR/sweep_log.txt"
 echo "Total experiments: $total_lines" >> "$RESULTS_DIR/sweep_log.txt"
 
 # ------------------------------------------------------------
-# Main loop: read tab‑separated lines, skipping first N
+# Main loop: read pipe‑separated lines, skipping first N
 # ------------------------------------------------------------
 experiment_num=0
 failed=0
@@ -193,8 +225,7 @@ while IFS= read -r line; do
     ((experiment_num++))
     [ $max_experiments -gt 0 ] && [ $experiment_num -gt $max_experiments ] && break
 
-    # Split line into fields using tab delimiter
-    IFS=$'\t' read -r -a fields <<< "$line"
+    IFS='|' read -r -a fields <<< "$line"
 
     # Build arguments for create_config.py – quote multi‑token values
     args=""
@@ -226,7 +257,7 @@ while IFS= read -r line; do
     if [ -n "${fields[25]}" ]; then
         args="$args --resize ${fields[25]}"
     fi
-    [ -n "${fields[26]}" ] && args="$args --augment-probability ${fields[26]}"
+    [ -n "${fields[26]}" ] && args="$args --augment-probability \"${fields[26]}\""
     [ "${fields[27]}" = "1" ] && args="$args --dynamic-dropout"
     [ -n "${fields[28]}" ] && args="$args --clip-limit ${fields[28]}"
 
