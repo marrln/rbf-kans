@@ -12,7 +12,7 @@ class Augmentor:
         resize = self.config.get('resize')
         if resize is not None and resize != 'None':
             transforms.append(A.Resize(*resize))
-        transforms.append(A.Normalize(normalization='min_max_per_channel'))
+        transforms.append(A.Normalize(normalization='standard', mean=(0.5,), std=(0.5,)))
         transforms.append(A.ToTensorV2())
         return transforms
 
