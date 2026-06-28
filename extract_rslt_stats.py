@@ -219,7 +219,7 @@ if __name__ == '__main__':
     epoch_str = str(use_epoch)
 
     gt_df = pd.read_csv(os.path.join(rslt_path, 'ground_truth.csv'), index_col='Index')
-    pr_df = pd.read_csv(os.path.join(rslt_path, f'{epoch_str}.csv'), index_col='Index')
+    pr_df = pd.read_csv(os.path.join(rslt_path, 'best.csv'), index_col='Index')
 
     categories = create_labels(save=False)
     os.makedirs(os.path.join(plots_path, epoch_str), exist_ok=True)
