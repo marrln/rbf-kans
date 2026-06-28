@@ -23,6 +23,7 @@ _TRAIN_PKL = _DATA_PATH / f"{DATASET_NAME}_train.pkl"
 _TEST_PKL  = _DATA_PATH / f"{DATASET_NAME}_test.pkl"
 _LABELS_JSON = _DATA_PATH / "labels.json"
 _STATS_JSON  = _DATA_PATH / "statistics.json"
+_MAPPING_JSON = _DATA_PATH / "fine_to_coarse.json"          # NEW
 
 def _get_class_names_from_torchvision(dataset_name: str) -> List[str]:
     try:
@@ -46,6 +47,37 @@ def get_class_names() -> List[str]:
             return data["classes"]
     return _get_class_names_from_torchvision(DATASET_NAME)
 
+def _get_fine_to_coarse_mapping() -> List[int]:
+    """
+    Returns a list of length 100 mapping fine class index -> coarse class index.
+    If a saved mapping exists, load it; otherwise build from training data and save.
+    """
+    if _MAPPING_JSON.exists():
+        with open(_MAPPING_JSON, "r") as f:
+            return json.load(f)
+
+    # Build mapping from training pickle (must exist)
+    if not _TRAIN_PKL.exists():
+        raise FileNotFoundError(f"Training data not found. Run build_dataset() first.")
+    with open(_TRAIN_PKL, "rb") as f:
+        data = pickle.load(f)
+    # data["labels"] are the fine labels (N,); data["coarse_labels"] are the coarse labels (N,) [added below]
+    coarse_labels = data.get("coarse_labels")
+    if coarse_labels is None:
+        raise ValueError("Training pickle does not contain coarse_labels. Rebuild dataset with force=True.")
+
+    fine_to_coarse = [0] * 100
+    for fine_cls in range(100):
+        # find first occurrence of fine_cls and take its coarse label
+        idx = np.where(np.array(data["labels"]) == fine_cls)[0][0]
+        fine_to_coarse[fine_cls] = int(coarse_labels[idx])
+
+    _MAPPING_JSON.parent.mkdir(parents=True, exist_ok=True)
+    with open(_MAPPING_JSON, "w") as f:
+        json.dump(fine_to_coarse, f, indent=2)
+
+    return fine_to_coarse
+
 def get_dataset_info() -> Dict:
     if DATASET_NAME == 'cifar10':
         return {
@@ -54,11 +86,17 @@ def get_dataset_info() -> Dict:
             'task': 'multiclass',
         }
     elif DATASET_NAME == 'cifar100':
-        return {
+        info = {
             'num_classes': 100,
             'input_shape': (32, 32, 3),
             'task': 'multiclass',
         }
+        # Only add mapping if it exists (will exist after build)
+        try:
+            info['fine_to_coarse'] = _get_fine_to_coarse_mapping()
+        except Exception:
+            pass
+        return info
     else:
         raise ValueError(f"Unknown dataset: {DATASET_NAME}")
 
@@ -75,21 +113,44 @@ def build_dataset(force: bool = False) -> None:
     if DATASET_NAME == 'cifar10':
         train_ds = datasets.CIFAR10(root=str(_DATA_PATH.parent), train=True, download=True)
         test_ds = datasets.CIFAR10(root=str(_DATA_PATH.parent), train=False, download=True)
+        train_data = train_ds.data
+        train_labels = np.array(train_ds.targets)
+        test_data = test_ds.data
+        test_labels = np.array(test_ds.targets)
+        with open(_TRAIN_PKL, "wb") as f:
+            pickle.dump({"data": train_data, "labels": train_labels, "classes": train_ds.classes}, f)
+        with open(_TEST_PKL, "wb") as f:
+            pickle.dump({"data": test_data, "labels": test_labels, "classes": test_ds.classes}, f)
     elif DATASET_NAME == 'cifar100':
         train_ds = datasets.CIFAR100(root=str(_DATA_PATH.parent), train=True, download=True)
         test_ds = datasets.CIFAR100(root=str(_DATA_PATH.parent), train=False, download=True)
+        train_data = train_ds.data
+        train_labels = np.array(train_ds.targets)
+        test_data = test_ds.data
+        test_labels = np.array(test_ds.targets)
+        # NEW: extract coarse labels
+        train_coarse = np.array(train_ds.coarse_labels) if hasattr(train_ds, 'coarse_labels') else None
+        test_coarse = np.array(test_ds.coarse_labels) if hasattr(test_ds, 'coarse_labels') else None
+
+        train_dict = {"data": train_data, "labels": train_labels, "classes": train_ds.classes}
+        test_dict = {"data": test_data, "labels": test_labels, "classes": test_ds.classes}
+        if train_coarse is not None:
+            train_dict["coarse_labels"] = train_coarse
+        if test_coarse is not None:
+            test_dict["coarse_labels"] = test_coarse
+
+        with open(_TRAIN_PKL, "wb") as f:
+            pickle.dump(train_dict, f)
+        with open(_TEST_PKL, "wb") as f:
+            pickle.dump(test_dict, f)
     else:
         raise ValueError(f"Unsupported dataset: {DATASET_NAME}")
-    class_names = train_ds.classes
-    train_data = train_ds.data
-    train_labels = np.array(train_ds.targets)
-    test_data = test_ds.data
-    test_labels = np.array(test_ds.targets)
-    with open(_TRAIN_PKL, "wb") as f:
-        pickle.dump({"data": train_data, "labels": train_labels, "classes": class_names}, f)
-    with open(_TEST_PKL, "wb") as f:
-        pickle.dump({"data": test_data, "labels": test_labels, "classes": class_names}, f)
-    print(f"Train: {train_data.shape}, Test: {test_data.shape}, Classes: {len(class_names)}")
+
+    print(f"Train: {train_data.shape}, Test: {test_data.shape}, Classes: {len(train_ds.classes)}")
+
+    # NEW: generate the fine-to-coarse mapping file immediately after building
+    if DATASET_NAME == 'cifar100':
+        _get_fine_to_coarse_mapping()
 
 def create_labels(force: bool = False, save: bool = True) -> Dict[str, Dict[str, int]]:
     if not save:
