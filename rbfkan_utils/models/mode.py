@@ -4,7 +4,10 @@ import torch.nn as nn
 class LambdaModule(nn.Module):
     def __init__(self, func):
         super().__init__()
-        self.func = func
+        if isinstance(func, str):
+            self.func = eval(func)
+        else:
+            self.func = func
         
     def extra_repr(self):
         return f'func={self.func}'
