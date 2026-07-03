@@ -1,6 +1,7 @@
 from warnings import warn
 import torch
 import torch.nn as nn
+from torch.nn import functional as F
 from ..utils import expand_value
 from typing import List, Union, Callable, Optional
 from .params import RBF_MODE
@@ -87,9 +88,7 @@ class RBFKAN(nn.Module):
         ])
         if normalize and len(hidden_layers) >= 2:
             self.normalize = nn.ModuleList([
-                nn.LayerNorm(
-                    in_dim
-                ) for in_dim in hidden_layers[:-1]
+                nn.LayerNorm(out_dim) for out_dim in hidden_layers[1:]
             ])
         else :
             self.normalize = False
@@ -108,13 +107,19 @@ class RBFKAN(nn.Module):
         self.train_grid = mode
         self.train_inv_denominator = mode
         return super().train(mode)
-
+    
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         for _iter, (layer, res) in enumerate(zip(self.layers, self.residual)):
-            if self.normalize :
-                x = self.normalize[_iter](x)
+            
+            identity = x
+            x = layer(x)
+            
+            if self.normalize:
+                x = self.normalize[_iter](x) 
+            
             if res:
-                x = layer(x) + x
-            else :
-                x = layer(x)
+                x = x + identity
+            
+            if _iter < len(self.layers) - 1:
+                x = F.relu(x)
         return x
