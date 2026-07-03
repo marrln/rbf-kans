@@ -27,6 +27,7 @@ if __name__ == '__main__':
     if dataset_path not in sys.path:
         sys.path.insert(0, dataset_path)
     from prepare_dataset import get_dataset, DATASET_DIR # pyright: ignore[reportMissingImports]
+    from rbfkan_utils.utils import separate_lr_params
     
     # Add test dir
     if args.test_dir is None:
@@ -79,7 +80,8 @@ if __name__ == '__main__':
     # Instantiate model, optimizer, and scheduler (same as in training)
     model     = instantiate(model_config, 'model')
     criterion = instantiate(train_config, 'criterion')
-    optimizer = instantiate(train_config, 'optimizer', model.parameters(), lr=train_config['lr'])
+    param_groups = separate_lr_params(model, train_config['lr'], scale_factor=0.01)
+    optimizer = instantiate(train_config, 'optimizer', param_groups, lr=train_config['lr'])
     scheduler = instantiate(train_config, 'scheduler', optimizer)
 
     # Path to the checkpoint (full state)

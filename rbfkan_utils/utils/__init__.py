@@ -10,6 +10,24 @@ from .dataset import *
 from .plotter import *
 from .summary import *
 
+def separate_lr_params(model, base_lr, scale_factor=0.01):
+    return [
+        {
+            'params': [p for n, p in model.named_parameters() if 'grid' not in n and 'inv_denominator' not in n],
+            'lr': base_lr
+        },
+        {
+            'params': [p for n, p in model.named_parameters() if 'grid' in n],
+            'lr': base_lr * scale_factor,
+            'weight_decay': 0.0
+        },
+        {
+            'params': [p for n, p in model.named_parameters() if 'inv_denominator' in n],
+            'lr': base_lr * scale_factor,
+            'weight_decay': 0.0
+        }
+    ]
+
 def save_model(model: Module, fname:str, device = torch.device('cpu')):
     if os.path.splitext(fname)[-1] not in ('.pt','.pth'):
         fname = f'{fname}.pt'

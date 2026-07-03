@@ -70,7 +70,7 @@ if __name__ == '__main__':
     from rbfkan_utils.config import *
     from rbfkan_utils.utils.dataset import smart_split_dataset
     from rbfkan_utils.training import train
-    from rbfkan_utils.utils import set_seed
+    from rbfkan_utils.utils import set_seed, separate_lr_params
     from rbfkan_utils.utils.summary import get_summary
     from custom_dataset import GenericDataset
 
@@ -84,7 +84,8 @@ if __name__ == '__main__':
     # Instantiate model, criterion, optimizer, scheduler
     model     = instantiate(model_config, 'model')
     criterion = instantiate(train_config, 'criterion')
-    optimizer = instantiate(train_config, 'optimizer', model.parameters(), lr=train_config['lr'])
+    param_groups = separate_lr_params(model, train_config['lr'], scale_factor=0.01)
+    optimizer = instantiate(train_config, 'optimizer', param_groups, lr=train_config['lr'])
     scheduler = instantiate(train_config, 'scheduler', optimizer)
     
     print('-- Model :',     model)
