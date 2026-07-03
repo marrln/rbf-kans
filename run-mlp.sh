@@ -136,7 +136,7 @@ if [ -z "$exp_hash" ]; then
     [ "$WITH_LOGITS" -eq 1 ] && CONFIGS+=(--with-logits)
     CONFIGS+=(--dataset "$DATASET")
 
-    cmd=("$PYTHON" "$THIS_DIR/create_configs_mlp.py" "${CONFIGS[@]}" --export --hash)
+    cmd=("$PYTHON" "$THIS_DIR/create_config_mlp.py" "${CONFIGS[@]}" --export --hash)
     print_verbose "[EXEC] ${cmd[*]}"
     exp_hash=$(dry_run "${cmd[@]}")
     if [ $dryrun -ge 1 ]; then
