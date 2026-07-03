@@ -46,11 +46,12 @@ class Augmentor:
                 A.PadIfNeeded(min_height=36, min_width=36, border_mode=0, always_apply=True),
                 A.RandomCrop(height=32, width=32, always_apply=True),
                 A.HorizontalFlip(p=self.config['probability']),
-                A.ColorJitter(
-                    brightness=0.2,
-                    contrast=0.2,
-                    saturation=0.2,
-                    hue=0.1,
+                A.RandomFog(fog_coef_lower=0.1, p=self.config['probability']),
+                A.CoarseDropout(
+                    num_holes_range=(1, 3), 
+                    hole_height_range=(4, 8), 
+                    hole_width_range=(4, 8), 
+                    fill=0, 
                     p=self.config['probability']
                 ),
                 *train_common
