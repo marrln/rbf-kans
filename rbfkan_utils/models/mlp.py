@@ -1,5 +1,6 @@
 import torch.nn as nn
 import torch.nn.functional as F
+from .params import USE_BIAS_ON_LINEAR
 
 class MLPBlock(nn.Module):
     """
@@ -12,7 +13,7 @@ class MLPBlock(nn.Module):
         self.is_last = is_last
         self.use_residual = use_residual
         
-        self.linear = nn.Linear(in_dim, out_dim)
+        self.linear = nn.Linear(in_dim, out_dim, bias=USE_BIAS_ON_LINEAR)
         
         if not self.is_last:
             self.norm = nn.LayerNorm(out_dim) if use_normalize else nn.Identity()
