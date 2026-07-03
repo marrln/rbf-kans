@@ -55,6 +55,7 @@ if __name__ == '__main__':
     if dataset_path not in sys.path:
         sys.path.insert(0, dataset_path)
     from prepare_dataset import DATASET_DIR, get_dataset_info, get_class_names # pyright: ignore[reportMissingImports]
+    from rbfkan_utils.metrics import SuperclassAccuracy
     
     # Set default after DATASET_DIR is available
     if args.dest_top_dir is None:
@@ -183,7 +184,7 @@ if __name__ == '__main__':
     # Evaluation criteria
     if dataset_info['task'] == 'multiclass':
         targ_apply = 'lambda target: target.to(torch.int64).squeeze(-1)'
-        train_config['eval_criteria'] = {
+        eval_criteria = {
             **object_to_config(
                 ProcessAndApplyMetric,
                 object_to_config(torchmetrics.Accuracy, task='multiclass', num_classes=num_classes),
@@ -233,6 +234,19 @@ if __name__ == '__main__':
                 target_name='AUROC',
             ),
         }
+        # --- ADD SuperclassTop1Accuracy only for CIFAR‑100 ---
+        if args.dataset.lower() == 'cifar100' and 'fine_to_coarse' in dataset_info:
+            eval_criteria.update(
+                object_to_config(
+                    ProcessAndApplyMetric,
+                    object_to_config(SuperclassAccuracy,
+                                     fine_to_coarse_map=dataset_info['fine_to_coarse'],
+                                     num_superclasses=20),
+                    targ_apply=targ_apply,
+                    target_name='SuperclassTop1Accuracy',
+                )
+            )
+        train_config['eval_criteria'] = eval_criteria
     else:
         train_config['eval_criteria'] = {
             **object_to_config(torchmetrics.Accuracy, task='binary', target_name='Accuracy'),
