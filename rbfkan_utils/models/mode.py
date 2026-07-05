@@ -18,10 +18,10 @@ class LambdaModule(nn.Module):
         return self.func(*args, **kwargs)
 
     
-class RSWAFF(nn.Module):
-    """RSWAFF activation function: 1 - tanh(x)^2"""
+class RSWAF(nn.Module):
+    """Reflectional SWitch Activation Function: 1 - tanh(x)^2"""
     def __init__(self):
-        super(RSWAFF, self).__init__()
+        super(RSWAF, self).__init__()
         self.tanh = torch.nn.Tanh()
         
     def forward(self, x):

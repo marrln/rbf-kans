@@ -7,48 +7,32 @@ function to resolve a given mode name or callable into a standardized format for
 from typing import Callable, Literal
 import torch
 
-from .mode import RSWAFF, PReLUGlobalParam, Tanh2, Gaussian, Sinc
+from .mode import RSWAF, PReLUGlobalParam, Tanh2, Gaussian, Sinc
 
 USE_BIAS_ON_LINEAR = False  # Required for FPGA compatibility
 
 RBF_MODE = Literal[
-    "RSWAFF",
+    "RSWAF",
     "PRELU",
     "TANH2",
     "GAUSSIAN",
     "SAMPLE",
+    # Add more modes here as needed
 ]
 
 _CUSTOM_MODES = {
-    "RSWAFF": RSWAFF,
+    "RSWAF": RSWAF,
     "PRELU": PReLUGlobalParam,
     "TANH2": Tanh2,
     "GAUSSIAN": Gaussian,
     "SAMPLE": Sinc,
+    # Add more custom modes here as needed
 }
 
 RBF_MODES = tuple(_CUSTOM_MODES)
 
 def get_rbf_mode(mode: str | Callable):
-    """Resolve a radial basis function mode into a callable and canonical name.
-
-    Parameters
-    ----------
-    mode : str | Callable
-        A mode name to look up in custom RBF modes, a torch.nn activation class
-        name, or a callable object to use directly.
-
-    Returns
-    -------
-    tuple[Callable, str]
-        The resolved callable and the normalized mode name.
-
-    Raises
-    ------
-    ValueError
-        If the supplied mode is neither a supported custom mode nor a
-        recognized torch.nn activation name.
-    """
+    """Resolve the RBF mode to its corresponding implementation."""
     if callable(mode) and not isinstance(mode, str):
         return mode, getattr(mode, "__name__", str(mode))
 
@@ -61,6 +45,7 @@ def get_rbf_mode(mode: str | Callable):
         return custom_mode(), mode_name 
     
     if hasattr(torch.nn, mode):
+        # Return the corresponding PyTorch activation function if it exists
         return getattr(torch.nn, mode)(), mode
 
     raise ValueError(f"Unsupported RBF mode: {mode}")

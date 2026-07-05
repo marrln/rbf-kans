@@ -10,7 +10,7 @@ RBF-KAN replaces traditional linear layers with a combination of:
 - A linear projection that mixes the RBF outputs.
 
 The submodule includes:
-- Custom RBF modes (e.g., `RSWAFF`, `GAUSSIAN`, `TANH2`).
+- Custom RBF modes (e.g., `RSWAF`, `GAUSSIAN`, `TANH2`).
 - Multiple layer variants (`RBFKANLayer`, `RBFKANLayerV2`, `DynamicRBFKANLayer`).
 - A full `RBFKAN` model that stacks layers with optional residual connections and normalisation.
 
@@ -22,7 +22,7 @@ Defines custom activation functions / basis functions usable as RBF modes.
 | Class / Function | Description |
 |------------------|-------------|
 | `LambdaModule` | Wraps an arbitrary callable as a `nn.Module`. |
-| `RSWAFF` | Returns `1 - tanh(x)^2` (the derivative of tanh, i.e. `sech²(x)`). |
+| `RSWAF` | Returns `1 - tanh(x)^2` (the derivative of tanh, i.e. `sech²(x)`). |
 | `PReLUGlobalParam` | PReLU with a single learnable parameter shared across all channels. |
 | `tanh2(x)` | Returns `tanh(x)²`. |
 | `gaussian(x)` | Returns `exp(-x²)`. |
@@ -34,11 +34,11 @@ Utility functions and constants for RBF mode configuration.
 | Constant / Function | Description |
 |----------------------|-------------|
 | `USE_BIAS_ON_LINEAR` | Boolean flag (set `False` for FPGA compatibility). |
-| `RBF_MODE` | Literal type: `"RSWAFF"`, `"PRELU"`, `"TANH2"`, `"GAUSSIAN"`, `"SAMPLE"`. |
+| `RBF_MODE` | Literal type: `"RSWAF"`, `"PRELU"`, `"TANH2"`, `"GAUSSIAN"`, `"SAMPLE"`. |
 | `get_rbf_mode(mode)` | Resolves a mode name or callable into a `(callable, name)` tuple. Supports custom modes and `torch.nn` activations (e.g. `"ReLU"`). |
 
 ### `rbf.py`
-Implements the base RBF module and a custom autograd function for the `RSWAFF` mode.
+Implements the base RBF module and a custom autograd function for the `RSWAF` mode.
 
 | Class | Description |
 |-------|-------------|
@@ -125,6 +125,6 @@ out = model(x)           # shape (4, 5)
 
 - *Dynamic Mode*: When `dynamic=True`, the model uses `DynamicRBFKANLayer`, which predicts the RBF grid and scale for each input sample using a small internal `RBFKANLayer`. This allows the RBF transformation to adapt dynamically based on the input features, potentially improving performance on complex tasks.
 
-- *Gradient Boosting*: In `RSWAFFFunction.backward`, the gradients are manually boosted by a factor of 10. This is a heuristic to encourage stronger updates to the grid and inverse denominator parameters, which can be crucial for training stability and convergence in RBF-KAN models.
+- *Gradient Boosting*: In `RSWAFFunction.backward`, the gradients are manually boosted by a factor of 10. This is a heuristic to encourage stronger updates to the grid and inverse denominator parameters, which can be crucial for training stability and convergence in RBF-KAN models.
 
 - *Residual Connections*: The `residual` parameter can be a boolean or a list. If `True`, residual connections are added for all layers where the input and output dimensions match. If a list is provided, it specifies which layers should have residual connections. This flexibility allows for easier experimentation with different architectures.

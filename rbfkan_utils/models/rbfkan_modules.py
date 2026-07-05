@@ -46,7 +46,7 @@ class RBFAuto(nn.Module):
         grid_max: float,
         num_grids: int,
         inv_denominator: float,
-        mode : RBF_MODE = 'RSWAFF'
+        mode : RBF_MODE = 'RSWAF'
     ):
         super(RBFAuto,self).__init__()
         self.grid_min = grid_min
@@ -77,7 +77,7 @@ class RBFAutoV2(nn.Module):
         grid_max: float,
         num_grids: int,
         inv_denominator: float,
-        mode: RBF_MODE = 'RSWAFF'
+        mode: RBF_MODE = 'RSWAF'
     ):
         super(RBFAutoV2, self).__init__()
         self.input_dim = input_dim
@@ -117,7 +117,7 @@ class DynamicRBFAuto(nn.Module):
         self,
         input_dim: int,
         num_grids: int,
-        mode : RBF_MODE = 'RSWAFF',
+        mode : RBF_MODE = 'RSWAF',
         dropout_rate: Optional[float] = None,
     ):
         super(DynamicRBFAuto,self).__init__()

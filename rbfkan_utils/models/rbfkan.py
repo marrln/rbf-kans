@@ -15,7 +15,7 @@ class RBFKAN(nn.Module):
         grid_min: float,
         grid_max: float,
         inv_denominator: float,
-        mode : Callable | RBF_MODE = 'RSWAFF',
+        mode : Callable | RBF_MODE = 'RSWAF',
         residual : list[bool] = False,
         dynamic : bool = False,
         use_v2 : bool = False,

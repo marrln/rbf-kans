@@ -21,7 +21,7 @@ if __name__ == '__main__':
     parser.add_argument('--grid-min', dest='grid_min', action='extend', nargs="+")
     parser.add_argument('--grid-max', dest='grid_max', action='extend', nargs="+")
     parser.add_argument('--scale','--inv_denominator', dest='scale', action='extend', nargs="+")
-    parser.add_argument('--mode', dest='mode', type=str, default='RSWAFF')
+    parser.add_argument('--mode', dest='mode', type=str, default='RSWAF')
     parser.add_argument('--residual', dest='residual', action='store_true')
     parser.add_argument('--dynamic', dest='dynamic', action='store_true')
     parser.add_argument('--use-v2', dest='use_v2', action='store_true', help='Use V2 RBFKAN layers')
