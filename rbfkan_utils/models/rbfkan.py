@@ -114,7 +114,7 @@ class RBFKAN(nn.Module):
             identity = x
             x = layer(x)
             
-            if self.normalize:
+            if self.normalize and _iter < len(self.layers) - 1:
                 x = self.normalize[_iter](x) 
             
             if res:
