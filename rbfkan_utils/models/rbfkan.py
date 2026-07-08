@@ -88,7 +88,7 @@ class RBFKAN(nn.Module):
         ])
         if normalize and len(hidden_layers) >= 2:
             self.normalize = nn.ModuleList([
-                nn.LayerNorm(out_dim) for out_dim in hidden_layers[1:]
+                nn.LayerNorm(out_dim) for out_dim in hidden_layers[1:-1]
             ])
         else :
             self.normalize = False
