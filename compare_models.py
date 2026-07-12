@@ -16,6 +16,7 @@ if __name__ == '__main__' :
     parser.add_argument('--dataset', dest='dataset', type=str, help=f'Dataset to use (required)', required=True)
     parser.add_argument('--no-pbar', action='store_true', dest='no_pbar', help='Suppress progress bars when running tests.')
     parser.add_argument('--quiet', action='store_true', dest='quiet', help='Suppress most output (only errors and final summary).')
+    parser.add_argument('-e', '--excel', dest='excel', default=None, help='Path to output Excel file with all experiments and hyperparameters.')
 
     args = parser.parse_args()
 
@@ -302,8 +303,15 @@ if __name__ == '__main__' :
             tests.drop(columns=col, inplace=True)
     # Recompute metric_cols after dropping
     metric_cols = [col for col in tests.columns if col not in config_cols]
-    
-    # --- Print model configurations with all hyperparameters (compact) ---
+
+    # Export to Excel
+    excel_path = args.excel if args.excel else os.path.join(args.test_dir, 'experiments.xlsx')
+    os.makedirs(os.path.dirname(os.path.abspath(excel_path)) or '.', exist_ok=True)
+    tests.to_excel(excel_path, index=False)
+    if not args.quiet:
+        print(f"Exported experiment data to {excel_path}")
+
+    # --- Print model configurations with all hyperparameters ---
     print("\n" + "="*80)
     print(f"MODEL CONFIGURATIONS - {DATASET_NAME.upper()}")
     print("="*80)
@@ -311,32 +319,29 @@ if __name__ == '__main__' :
         config_name = tests.loc[idx, 'Configuration']
         version = tests.loc[idx, 'Version']
         print(f"\n[{config_name} / {version}]")
-        # Model hyperparams (single line)
         model_line = (
             f"Model: Layers={tests.loc[idx, 'num_layers']} | Hidden={tests.loc[idx, 'hidden_layers']} | "
-            f"Mode={tests.loc[idx, 'mode']} | Grids={tests.loc[idx, 'grids']} | "
-            f"GridMin={tests.loc[idx, 'grid_min']} | GridMax={tests.loc[idx, 'grid_max']} | "
-            f"Scale={tests.loc[idx, 'scale']} | Logits={tests.loc[idx, 'use_logits']} | "
-            f"Residual={tests.loc[idx, 'residual']} | Dynamic={tests.loc[idx, 'dynamic']} | "
-            f"UseV2={tests.loc[idx, 'use_v2']} | Norm={tests.loc[idx, 'normalize']} | "
-            f"NormRBF={tests.loc[idx, 'normalize_rbf']} | Dropout={tests.loc[idx, 'dropout_rate']} | "
-            f"DropoutLinear={tests.loc[idx, 'dropout_linear']}"
+            f"Residual={tests.loc[idx, 'residual']} | Grids={tests.loc[idx, 'grids']} | "
+            # f"Mode={tests.loc[idx, 'mode']} | Grids={tests.loc[idx, 'grids']} | "
+            # f"GridMin={tests.loc[idx, 'grid_min']} | GridMax={tests.loc[idx, 'grid_max']} | "
+            # f"Scale={tests.loc[idx, 'scale']} | Logits={tests.loc[idx, 'use_logits']} | "
+            # f"Residual={tests.loc[idx, 'residual']} | Dynamic={tests.loc[idx, 'dynamic']} | "
+            # f"UseV2={tests.loc[idx, 'use_v2']} | Norm={tests.loc[idx, 'normalize']} | "
+            # f"NormRBF={tests.loc[idx, 'normalize_rbf']} | Dropout={tests.loc[idx, 'dropout_rate']} | "
+            # f"DropoutLinear={tests.loc[idx, 'dropout_linear']}"
         )
         print("  " + model_line)
-        # Training hyperparams (single line)
         train_line = (
-            f"Train: Seed={tests.loc[idx, 'seed']} | Batch={tests.loc[idx, 'batch_size']} | "
+            # f"Train: Seed={tests.loc[idx, 'seed']} | Batch={tests.loc[idx, 'batch_size']} | "
             f"LR={tests.loc[idx, 'lr']} | Opt={tests.loc[idx, 'optimizer']} | "
-            f"WD={tests.loc[idx, 'weight_decay']} | Mom={tests.loc[idx, 'momentum']} | "
-            f"Clip={tests.loc[idx, 'clip_limit']} | LRFact={tests.loc[idx, 'lr_factor']} | "
-            f"LRPat={tests.loc[idx, 'lr_patience']} | Resize={tests.loc[idx, 'resize']} | "
-            f"Prob={tests.loc[idx, 'probability']} | Pat={tests.loc[idx, 'patience']} | "
-            f"Epochs={tests.loc[idx, 'epochs']} | DynDrop={tests.loc[idx, 'dynamic_dropout']}"
+            # f"WD={tests.loc[idx, 'weight_decay']} | Mom={tests.loc[idx, 'momentum']} | "
+            # f"Clip={tests.loc[idx, 'clip_limit']} | LRFact={tests.loc[idx, 'lr_factor']} | "
+            # f"LRPat={tests.loc[idx, 'lr_patience']} | Resize={tests.loc[idx, 'resize']} | "
+            # f"Prob={tests.loc[idx, 'probability']} | Pat={tests.loc[idx, 'patience']} | "
+            # f"Epochs={tests.loc[idx, 'epochs']} | DynDrop={tests.loc[idx, 'dynamic_dropout']}"
         )
         print("  " + train_line)
-    
-    # Do not print the huge DataFrame; it's already summarized above.
-    
+        
     plt_dir = os.path.join(args.test_dir, 'comparison')
     os.makedirs(plt_dir, exist_ok=True)
     
@@ -406,7 +411,6 @@ if __name__ == '__main__' :
     print("\n" + "="*80)
     print("DETAILED METRIC SUMMARY")
     print("="*80)
-    # Recompute tests_g (in case we modified metric_cols)
     if len(metric_cols) > 0:
         tests_g = tests.set_index(['Configuration', 'Version'])
         for col in metric_cols:
