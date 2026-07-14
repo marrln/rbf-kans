@@ -3,20 +3,20 @@
 ########################################
 # Configuration arguments
 ########################################
-TEST_VERSION=0     
+TEST_VERSION=mlp     
 SEED=42
 
 # Dataset Configuration
-DATASET="mnist"             # Options: cifar10, cifar100, mnist, ship_performance
+DATASET="cifar100"             # Options: cifar10, cifar100, mnist, ship_performance
 RESIZE=""
-AUGMENT_PROBABILITY=0.45
+AUGMENT_PROBABILITY=0.75
 
 # Model Configuration
 WITH_LOGITS=1
-LAYERS="512 512"
+LAYERS="64"
 RESIDUAL=0
 NO_NORMALIZE=0
-DROP_OUT=0.2
+DROP_OUT=0.1
 DYNAMIC_DROPOUT=0
 
 # Training Configuration

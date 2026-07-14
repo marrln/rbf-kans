@@ -5,35 +5,35 @@
 ########################################
 
 WITH_LOGITS=(1)
-TEST_VERSIONS=("0")
-SEEDS=(123)
+TEST_VERSIONS=("small")
+SEEDS=(12345)
 
-LAYERS_LIST=("64" "512" "256 256" "512 512" "64 64 64")        # multi‑layer hidden sizes
-NUM_GRIDS_LIST=("8" "16")                                      # per‑layer grids
+LAYERS_LIST=("16" "16 16" "32" "32 32" "64" "64 64")        # multi‑layer hidden sizes
+NUM_GRIDS_LIST=("8" "16" "32")                                      # per‑layer grids
 GRID_MIN_LIST=("-1.65")
 GRID_MAX_LIST=("2.0")
 SCALE_LIST=("2")
 MODES=('RSWAF')
 RESIDUALS=(0 1)
-DYNAMICS=(0 1)
+DYNAMICS=(1)
 USE_V2S=(0)
 NO_NORMALIZES=(0)
 NO_NORMALIZE_RBFS=(0)
-DROPOUTS=(0.2)
-DROPOUT_LINEAR_LIST=(0.2)
-EPOCHS_LIST=(1000)
-PATIENCE_LIST=(100)
+DROPOUTS=(0.3)
+DROPOUT_LINEAR_LIST=(0.3)
+EPOCHS_LIST=(400)
+PATIENCE_LIST=(25)
 BATCH_SIZES=(128)
-LEARNING_RATES=(1e-5)
+LEARNING_RATES=(5e-5 1e-4)
 LR_FACTORS=(0.5)
-LR_PATIENCE_LIST=(25)
+LR_PATIENCE_LIST=(10)
 OPTIMIZERS=("AdamW")
 WEIGHT_DECAYS=(1e-3)
 MOMENTUMS=("0.9")
 
 # ----- NEW PARAMETERS -----
 RESIZE_LIST=("")                     # empty means no resize
-AUGMENT_PROB_LIST=(0.45)
+AUGMENT_PROB_LIST=(0.75)
 DYNAMIC_DROPOUT_LIST=(0)             # 0 = off, 1 = on
 GRAD_CLIP_LIST=(1.0)                 # gradient clip limit
 # -------------------------
@@ -41,7 +41,7 @@ GRAD_CLIP_LIST=(1.0)                 # gradient clip limit
 ########################################
 # Runtime Configuration
 ########################################
-MAX_PARALLEL_JOBS=2
+MAX_PARALLEL_JOBS=1
 DATASET="mnist"
 PYTHON=python
 THIS_DIR=$(dirname "$(realpath "$0")")
