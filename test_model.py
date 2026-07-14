@@ -26,7 +26,7 @@ if __name__ == '__main__':
     dataset_path = os.path.join(THIS_DIR, args.dataset)
     if dataset_path not in sys.path:
         sys.path.insert(0, dataset_path)
-    from prepare_dataset import get_dataset, DATASET_DIR # pyright: ignore[reportMissingImports]
+    from prepare_dataset import get_dataset, DATASET_DIR, DATASET_NAME, get_dataset # pyright: ignore[reportMissingImports]
     from rbfkan_utils.utils import separate_lr_params
     
     # Add test dir
@@ -80,7 +80,7 @@ if __name__ == '__main__':
     # Instantiate model, optimizer, and scheduler (same as in training)
     model     = instantiate(model_config, 'model')
     criterion = instantiate(train_config, 'criterion')
-    param_groups = separate_lr_params(model, train_config['lr'], scale_factor=0.01)
+    param_groups = separate_lr_params(model, train_config['lr'], scale_factor=0.1)
     optimizer = instantiate(train_config, 'optimizer', param_groups, lr=train_config['lr'])
     scheduler = instantiate(train_config, 'scheduler', optimizer)
 
@@ -109,7 +109,10 @@ if __name__ == '__main__':
         eval_criteria['loss'] = instantiate(train_config, 'criterion')
 
     # Get test dataset
-    data, labels = get_dataset('test')
+    if DATASET_NAME == 'cifar100':
+        data, labels, coarse_labels = get_dataset('test')
+    else:
+        data, labels = get_dataset('test')
     
     # Instantiate the augmentor
     augmentor = Augmentor(train_config)
