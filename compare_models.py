@@ -40,6 +40,7 @@ if __name__ == '__main__' :
     import matplotlib.pyplot as plt
     import torch
     from rbfkan_utils.utils import load_dict
+    from rbfkan_utils.config import load_config, instantiate, get_locals
 
     # ------------------------------------------------------------------
     # Helper function: run test.py for a given config if needed
@@ -127,7 +128,9 @@ if __name__ == '__main__' :
         'clip_limit', 'lr_factor', 'lr_patience', 'resize', 'probability',
         'patience', 'epochs', 'dynamic_dropout'
     ]
-    all_hyperparams = model_hyperparams + train_hyperparams
+    # Additional columns for model complexity
+    complexity_columns = ['Parameters', 'MACs']
+    all_hyperparams = model_hyperparams + train_hyperparams + complexity_columns
     for col in all_hyperparams:
         tests[col] = None
     
@@ -156,7 +159,9 @@ if __name__ == '__main__' :
         model_config_path = os.path.join(config_dir, 'config', 'model.json')
         train_config_path = os.path.join(config_dir, 'config', 'train.json')
 
+        full_model_config = None
         if os.path.exists(model_config_path):
+            full_model_config = load_config(model_config_path, locals=get_locals())
             model_config = load_dict(model_config_path.replace('.json', ''))
             
             # The model config may be stored as a string under 'model' and actual args under 'model_args'
@@ -290,7 +295,31 @@ if __name__ == '__main__' :
             if metric not in tests.columns:
                 tests[metric] = float('NaN')
             tests.loc[idx, metric] = value
-    
+            
+        # ----- Compute model Parameters and MACs -----
+        checkpoint_path = os.path.join(config_dir, 'models', 'best.pt')
+
+        # Load checkpoint state dict
+        checkpoint = torch.load(checkpoint_path, map_location='cpu')
+        state_dict = checkpoint.get('model_state_dict')
+
+        # Instantiate model from config and load weights
+        model = instantiate(full_model_config, 'model')
+        _, _ = model.load_state_dict(state_dict, strict=False)
+        model.eval()
+
+        # Count parameters
+        total_params = sum(p.numel() for p in model.parameters())
+        tests.loc[idx, 'Parameters'] = total_params
+
+        from ptflops import get_model_complexity_info
+
+        print(f"Computing MACs for model {hash_val}/{version_folder}...")
+        input_dim = int(kan_config['hidden_layers'][0])  # ensure integer
+
+        macs, _ = get_model_complexity_info(model, (input_dim,), as_strings=False, print_per_layer_stat=False)
+        tests.loc[idx, 'MACs'] = f"{macs/1e6:.2f}M"
+        
     # Continue with the rest of the original script (plotting, top 5, etc.)
     if args.limit > 0:
         tests['Configuration'] = [_[:args.limit] for _ in tests['Configuration'].values]
@@ -341,6 +370,7 @@ if __name__ == '__main__' :
             # f"Epochs={tests.loc[idx, 'epochs']} | DynDrop={tests.loc[idx, 'dynamic_dropout']}"
         )
         print("  " + train_line)
+        print(f"  Params={tests.loc[idx, 'Parameters']} | MACs={tests.loc[idx, 'MACs']}")
         
     plt_dir = os.path.join(args.test_dir, 'comparison')
     os.makedirs(plt_dir, exist_ok=True)
