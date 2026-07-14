@@ -8,6 +8,7 @@ class GenericDataset(Dataset):
         self,
         data,
         labels,
+        coarse_labels=None,
         task=None,
         return_key=False,
         return_weights=None,
@@ -17,6 +18,7 @@ class GenericDataset(Dataset):
     ):
         self.data = data
         self.labels = labels
+        self.coarse_labels = coarse_labels
         self.task = task
         self.return_key = return_key
         self.return_weights = return_weights
@@ -31,6 +33,10 @@ class GenericDataset(Dataset):
         x = self.data[idx]
         y = self.labels[idx]
 
+        if self.coarse_labels is not None:
+            coarse_y = self.coarse_labels[idx]
+            y = (y, coarse_y)
+        
         # Preprocess image (expects H,W,C)
         if self.preprocess_data is not None:
             try:
