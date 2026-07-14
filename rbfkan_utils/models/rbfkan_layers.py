@@ -39,7 +39,7 @@ class RBFKANLayerV2(nn.Module):
         )
         # Add normalization to stabilize RBF outputs before linear layer
         if normalize_rbf:
-            self.rbf_norm = nn.LayerNorm(input_dim * num_grids)
+            self.rbf_norm = nn.LayerNorm(input_dim * num_grids, bias=False)
         self.linear = nn.Linear(input_dim * num_grids, output_dim, bias=USE_BIAS_ON_LINEAR) 
         self.drop = nn.Dropout(0 if dropout_rate is None else dropout_rate)
         self.drop_linear = nn.Dropout(0 if dropout_linear is None else dropout_linear)
@@ -81,8 +81,10 @@ class RBFKANLayer(nn.Module):
         self.rbf = RBFAuto(train_grid, train_inv_denominator,grid_min, grid_max, num_grids, inv_denominator, mode=mode)
         # Add normalization to stabilize RBF outputs before linear layer
         if normalize_rbf:
-            self.rbf_norm = nn.LayerNorm(input_dim * num_grids)
+            self.rbf_norm = nn.LayerNorm(input_dim * num_grids, bias=False)
+        
         self.linear = nn.Linear(input_dim * num_grids, output_dim, bias=USE_BIAS_ON_LINEAR) 
+        self.linear.apply(lambda m: nn.init.xavier_uniform_(m.weight) if isinstance(m, nn.Linear) else None)
         
         self.drop = nn.Dropout(0 if dropout_rate is None else float(dropout_rate))
         self.drop_linear = nn.Dropout(0 if dropout_linear is None else float(dropout_linear))
