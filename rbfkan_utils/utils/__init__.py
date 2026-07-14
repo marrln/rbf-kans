@@ -19,12 +19,12 @@ def separate_lr_params(model, base_lr, scale_factor=0.01):
         {
             'params': [p for n, p in model.named_parameters() if 'grid' in n],
             'lr': base_lr * scale_factor,
-            'weight_decay': 0.0
+            # 'weight_decay': 0.0
         },
         {
             'params': [p for n, p in model.named_parameters() if 'inv_denominator' in n],
             'lr': base_lr * scale_factor,
-            'weight_decay': 0.0
+            # 'weight_decay': 0.0
         }
     ]
 
