@@ -16,7 +16,7 @@ class MLPBlock(nn.Module):
         self.linear = nn.Linear(in_dim, out_dim, bias=USE_BIAS_ON_LINEAR)
         
         if not self.is_last:
-            self.norm = nn.LayerNorm(out_dim) if use_normalize else nn.Identity()
+            self.norm = nn.LayerNorm(out_dim, bias=False) if use_normalize else nn.Identity()
             self.act = nn.ReLU()
             
         if self.use_residual:
