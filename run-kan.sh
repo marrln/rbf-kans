@@ -4,24 +4,24 @@
 # Configuration arguments
 ########################################
 
-TEST_VERSION="first_runs"
-SEED=42
+TEST_VERSION="trial_small"
+SEED=4231
 
 # Dataset Configuration
-DATASET="mnist"
+DATASET="mnist" # Options: cifar10, cifar100, mnist, ship_performance
 RESIZE=""
-AUGMENT_PROBABILITY=0.25
+AUGMENT_PROBABILITY=0.511
 
 # Model Configuration
 WITH_LOGITS=1
 LAYERS="8"
 NUM_GRIDS="8"
-GRID_MIN="-1.5"
-GRID_MAX="1.5"
-SCALE="2"
-MODE="PReLU"
-RESIDUAL=1
-DYNAMIC=0
+GRID_MIN="-1.0"
+GRID_MAX="1.0"
+SCALE="5"
+MODE="RSWAF" # Options: RSWAF, PReLU, tanh2 
+RESIDUAL=0
+DYNAMIC=1
 USE_V2=0
 NO_NORMALIZE=0
 NO_NORMALIZE_RBF=0
@@ -30,15 +30,15 @@ LINEAR_DROPOUT=0.1
 USE_DYNAMIC_DROPOUT=0
 
 # Training Configuration
-EPOCHS=1000
-BATCH_SIZE=100
+EPOCHS=400
+BATCH_SIZE=128
 EARLY_STOPPING_PATIENCE=50
-LR=1e-5
+LR=1e-4
 LR_FACTOR=0.5
-LR_PATIENCE=10
+LR_PATIENCE=25
 OPTIMIZER="AdamW"
 GRAD_CLIP_LIMIT=1.0
-WEIGHT_DECAY=5e-2
+WEIGHT_DECAY=1e-3
 MOMENTUM=0.9
 
 # Python executable

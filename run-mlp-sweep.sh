@@ -5,36 +5,36 @@
 ########################################
 
 WITH_LOGITS=(1)
-TEST_VERSIONS=("mlp_sweep")
+TEST_VERSIONS=("mlp_small")
 SEEDS=(42)
 
-LAYERS_LIST=("64" "128" "256" "64 64" "128 128" "256 256")   # hidden layer sizes
+LAYERS_LIST=("128" "128 128" "256" "256 256" "512" "512 512" "1024" "1024 1024" "2048" "2048 2048")   # hidden layer sizes
 
 RESIDUALS=(0 1)
 NO_NORMALIZES=(0)
-DROPOUTS=(0.0 0.1 0.3)
+DROPOUTS=(0.3)
 DYNAMIC_DROPOUT_LIST=(0)                # 0 = off, 1 = on
 
-EPOCHS_LIST=(400 800)
-PATIENCE_LIST=(25 50)
+EPOCHS_LIST=(400)
+PATIENCE_LIST=(25)
 BATCH_SIZES=(128)
-LEARNING_RATES=(1e-4 3e-4)
+LEARNING_RATES=(5e-5 1e-4)
 LR_FACTORS=(0.5)
-LR_PATIENCE_LIST=(10 25)
+LR_PATIENCE_LIST=(10)
 OPTIMIZERS=("AdamW")
-WEIGHT_DECAYS=(1e-4 5e-4)
+WEIGHT_DECAYS=(1e-3)
 MOMENTUMS=("0.9")
 
 # Data augmentation & other
 RESIZE_LIST=("")                        # empty = no resize
-AUGMENT_PROB_LIST=(0.0 0.75)
+AUGMENT_PROB_LIST=(0.75)
 GRAD_CLIP_LIST=(1.0)
 
 ########################################
 # Runtime Configuration
 ########################################
-MAX_PARALLEL_JOBS=2
-DATASET="cifar100"
+MAX_PARALLEL_JOBS=1
+DATASET="mnist"
 PYTHON=python
 THIS_DIR=$(dirname "$(realpath "$0")")
 RESULTS_DIR="$THIS_DIR/$DATASET/train/sweep_results_mlp"
@@ -44,7 +44,7 @@ RESULTS_DIR="$THIS_DIR/$DATASET/train/sweep_results_mlp"
 ########################################
 
 # ------------------------------------------------------------
-# Generate all unique combinations
+# Generate all unique combinations (with filtering for residual)
 # ------------------------------------------------------------
 generate_combinations() {
     join_by_pipe() {
@@ -58,10 +58,27 @@ import itertools, sys
 def split_pipe(s):
     return s.split("|") if s != "" else [""]
 
+def layers_valid(layers_str):
+    """Return True if layers have at least one adjacent equal pair."""
+    layers = layers_str.split()
+    if len(layers) < 2:
+        return False
+    for i in range(len(layers)-1):
+        if layers[i] == layers[i+1]:
+            return True
+    return False
+
 # Parse all arguments (20 fields)
 all_arrays = [split_pipe(sys.argv[i]) for i in range(1, 21)]
 
 for combo in itertools.product(*all_arrays):
+    residual = combo[4]   # field index 4 = residual flag
+    layers = combo[3]     # field index 3 = layers string
+
+    # If residual=1, skip layer configurations without an adjacent equal pair
+    if residual == "1" and not layers_valid(layers):
+        continue
+
     sys.stdout.write("|".join(combo) + "\n")
 ' "$(join_by_pipe "${WITH_LOGITS[@]}")" \
   "$(join_by_pipe "${TEST_VERSIONS[@]}")" \
