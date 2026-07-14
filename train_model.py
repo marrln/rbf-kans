@@ -84,7 +84,7 @@ if __name__ == '__main__':
     # Instantiate model, criterion, optimizer, scheduler
     model     = instantiate(model_config, 'model')
     criterion = instantiate(train_config, 'criterion')
-    param_groups = separate_lr_params(model, train_config['lr'], scale_factor=0.01)
+    param_groups = separate_lr_params(model, train_config['lr'], scale_factor=0.1)
     optimizer = instantiate(train_config, 'optimizer', param_groups, lr=train_config['lr'])
     scheduler = instantiate(train_config, 'scheduler', optimizer)
     
@@ -104,7 +104,11 @@ if __name__ == '__main__':
     
     augmentor = Augmentor(train_config)
     
-    data, labels = get_dataset('train_val')
+    if DATASET_NAME == 'cifar100':
+        data, labels, coarse_labels = get_dataset('train_val')
+    else:
+        data, labels = get_dataset('train_val')
+        
     train_indices, val_indices = smart_split_dataset(
         splits       = train_config['splits'],
         full_dataset = None,
