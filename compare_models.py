@@ -166,7 +166,7 @@ if __name__ == '__main__' :
             
             # The model config may be stored as a string under 'model' and actual args under 'model_args'
             # Parse from model_args if available
-            kan_config = None
+            model_cfg_kwargs = None
             if isinstance(model_config, dict):
                 # Extract from 'model_args'
                 model_args = model_config.get('model_args')
@@ -177,41 +177,48 @@ if __name__ == '__main__' :
                         # The layers are under '_args'
                         layers = ordered_dict_cfg.get('_args', [])
                         if isinstance(layers, list) and len(layers) > 0:
-                            # Each layer is a dict with one key (e.g., 'kan')
+                            # Each layer is a dict with one key (e.g., 'kan' or 'mlp')
                             for layer_dict in layers:
-                                if isinstance(layer_dict, dict) and 'kan' in layer_dict:
-                                    kan_cfg = layer_dict['kan']
-                                    if isinstance(kan_cfg, dict):
-                                        kan_config = kan_cfg.get('_kwargs', {})
-                                        break
+                                if isinstance(layer_dict, dict):
+                                    # Detect either 'kan' or 'mlp'
+                                    if 'kan' in layer_dict:
+                                        layer_cfg = layer_dict['kan']
+                                        if isinstance(layer_cfg, dict):
+                                            model_cfg_kwargs = layer_cfg.get('_kwargs', {})
+                                            break
+                                    elif 'mlp' in layer_dict:
+                                        layer_cfg = layer_dict['mlp']
+                                        if isinstance(layer_cfg, dict):
+                                            model_cfg_kwargs = layer_cfg.get('_kwargs', {})
+                                            break
 
-            if kan_config:
+            if model_cfg_kwargs:
                 try:
-                    hidden_layers = kan_config.get('hidden_layers', [])
+                    hidden_layers = model_cfg_kwargs.get('hidden_layers', [])
                     if hidden_layers:
                         tests.loc[idx, 'num_layers'] = len(hidden_layers) - 1
                         tests.loc[idx, 'hidden_layers'] = str(hidden_layers)
                     
-                    tests.loc[idx, 'mode'] = kan_config.get('mode', 'N/A')
-                    grids = kan_config.get('num_grids', [])
+                    tests.loc[idx, 'mode'] = model_cfg_kwargs.get('mode', 'N/A')
+                    grids = model_cfg_kwargs.get('num_grids', [])
                     tests.loc[idx, 'grids'] = str(grids) if grids else 'N/A'
-                    tests.loc[idx, 'grid_min'] = str(kan_config.get('grid_min', [])) or 'N/A'
-                    tests.loc[idx, 'grid_max'] = str(kan_config.get('grid_max', [])) or 'N/A'
-                    tests.loc[idx, 'scale'] = str(kan_config.get('inv_denominator', [])) or 'N/A'
-                    tests.loc[idx, 'residual'] = str(kan_config.get('residual', 'N/A'))
-                    tests.loc[idx, 'dynamic'] = str(kan_config.get('dynamic', 'N/A'))
-                    tests.loc[idx, 'use_v2'] = str(kan_config.get('use_v2', 'N/A'))
-                    tests.loc[idx, 'normalize'] = str(kan_config.get('normalize', 'N/A'))
-                    tests.loc[idx, 'normalize_rbf'] = str(kan_config.get('normalize_rbf', 'N/A'))
+                    tests.loc[idx, 'grid_min'] = str(model_cfg_kwargs.get('grid_min', [])) or 'N/A'
+                    tests.loc[idx, 'grid_max'] = str(model_cfg_kwargs.get('grid_max', [])) or 'N/A'
+                    tests.loc[idx, 'scale'] = str(model_cfg_kwargs.get('inv_denominator', [])) or 'N/A'
+                    tests.loc[idx, 'residual'] = str(model_cfg_kwargs.get('residual', 'N/A'))
+                    tests.loc[idx, 'dynamic'] = str(model_cfg_kwargs.get('dynamic', 'N/A'))
+                    tests.loc[idx, 'use_v2'] = str(model_cfg_kwargs.get('use_v2', 'N/A'))
+                    tests.loc[idx, 'normalize'] = str(model_cfg_kwargs.get('normalize', 'N/A'))
+                    tests.loc[idx, 'normalize_rbf'] = str(model_cfg_kwargs.get('normalize_rbf', 'N/A'))
                     
-                    dropout_rate_val = kan_config.get('dropout_rate', 'N/A')
+                    dropout_rate_val = model_cfg_kwargs.get('dropout_rate', 'N/A')
                     if isinstance(dropout_rate_val, dict) and '_args' in dropout_rate_val:
                         args_list = dropout_rate_val.get('_args', [])
                         if args_list:
                             dropout_rate_val = str(args_list[0])
                     tests.loc[idx, 'dropout_rate'] = str(dropout_rate_val)
                     
-                    tests.loc[idx, 'dropout_linear'] = str(kan_config.get('dropout_linear', 'N/A'))
+                    tests.loc[idx, 'dropout_linear'] = str(model_cfg_kwargs.get('dropout_linear', 'N/A'))
                 except Exception as e:
                     if not args.quiet:
                         print(f'Warning: Could not parse model config for "{config_dir}": {e}')
@@ -314,8 +321,7 @@ if __name__ == '__main__' :
 
         from ptflops import get_model_complexity_info
 
-        print(f"Computing MACs for model {hash_val}/{version_folder}...")
-        input_dim = int(kan_config['hidden_layers'][0])  # ensure integer
+        input_dim = int(model_cfg_kwargs['hidden_layers'][0])  # ensure integer
 
         macs, _ = get_model_complexity_info(model, (input_dim,), as_strings=False, print_per_layer_stat=False)
         tests.loc[idx, 'MACs'] = f"{macs/1e6:.2f}M"
