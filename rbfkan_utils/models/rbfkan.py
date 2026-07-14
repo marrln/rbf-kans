@@ -45,15 +45,22 @@ class RBFKAN(nn.Module):
         else :
             LayerClass = RBFKANLayer
         
-        self.residual   = []
+        self.residual = []
         for _iter, residual_i in enumerate(residual):
-            if residual_i :
-                if hidden_layers[_iter] == hidden_layers[_iter+1] :
+            
+            if _iter == 0 or _iter == len(residual) - 1:
+                self.residual.append(False)
+                continue
+
+            if residual_i:
+                if hidden_layers[_iter] == hidden_layers[_iter + 1]:
                     self.residual.append(True)
-                else :
-                    warn(f"Skipped residual connection at layer {_iter}; Number of features do not match ({hidden_layers[_iter]} != {hidden_layers[_iter+1]})")
+                else:
+                    warn(f"Skipped residual connection at layer {_iter}; "
+                        f"Number of features do not match "
+                        f"({hidden_layers[_iter]} != {hidden_layers[_iter + 1]})")
                     self.residual.append(False)
-            else :
+            else:
                 self.residual.append(False)
         
         self.layers = nn.ModuleList([
@@ -88,7 +95,7 @@ class RBFKAN(nn.Module):
         ])
         if normalize and len(hidden_layers) >= 2:
             self.normalize = nn.ModuleList([
-                nn.LayerNorm(out_dim) for out_dim in hidden_layers[1:-1]
+                nn.LayerNorm(out_dim, bias=False) for out_dim in hidden_layers[1:-1]
             ])
         else :
             self.normalize = False
