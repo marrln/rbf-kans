@@ -43,7 +43,7 @@ This project implements **RBF-KAN** – a flexible neural network architecture t
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/rbf-kan.git
+   git clone https://github.com/marrln/rbf-kan.git
    cd rbf-kan
    ```
 
