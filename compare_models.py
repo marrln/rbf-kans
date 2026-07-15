@@ -122,6 +122,8 @@ if __name__ == '__main__' :
         if tests.empty:
             print(f"No experiments found with version '{args.version}'")
             sys.exit(1)
+        else:
+            print(f"Found {len(tests)} experiments with version '{args.version}'")
         
     # --- Define all hyperparameter columns (model + training) ---
     # Model architecture hyperparams (from model config)
