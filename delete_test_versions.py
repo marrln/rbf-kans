@@ -72,7 +72,7 @@ if __name__ == '__main__':
     if dataset_path not in sys.path:
         sys.path.insert(0, dataset_path)
     try:
-        from prepare_dataset import DATASET_DIR, DATASET_NAME 
+        from prepare_dataset import DATASET_DIR, DATASET_NAME  # pyright: ignore[reportMissingImports]
     except ImportError as e:
         print(f"Error: Cannot import prepare_dataset from {dataset_path}. Ensure the dataset exists.")
         sys.exit(1)
