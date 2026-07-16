@@ -207,7 +207,7 @@ if __name__ == '__main__' :
                     hidden_layers = model_cfg_kwargs.get('hidden_layers', [])
                     if hidden_layers:
                         tests.loc[idx, 'num_layers'] = len(hidden_layers) - 1
-                        tests.loc[idx, 'hidden_layers'] = str(hidden_layers)
+                        tests.loc[idx, 'hidden_layers'] = str(hidden_layers[1:-1])  # exclude input and output layers
                     
                     tests.loc[idx, 'mode'] = model_cfg_kwargs.get('mode', 'N/A')
                     grids = model_cfg_kwargs.get('num_grids', [])
